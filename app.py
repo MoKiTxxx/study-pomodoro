@@ -24,6 +24,7 @@ from sheets_db import SheetsDB
 st.set_page_config(page_title="Study Pomodoro Tracker", layout="wide", initial_sidebar_state="expanded")
 
 ALARM_PATH = Path(__file__).with_name("Alarm.mp3")
+ALARM_PLAY_SECONDS = 8
 
 # Streamlit's built-in toolbar is not localized by the app language switch.
 st.markdown(
@@ -462,18 +463,24 @@ def drain_pending_writes(db: SheetsDB, language: str) -> None:
 
 
 def render_start_page(db: SheetsDB, timezone: str, language: str) -> None:
-    if timer_state.is_running() and st_autorefresh:
-        st_autorefresh(interval=500, key="timer_refresh")
-
     timer_state.advance_timer(timezone)
-    render_alarm_player()
+    alarm_refresh_token = render_alarm_player()
     just_finished = timer_state.consume_just_finished()
 
     if just_finished:
-        if st_autorefresh:
+        if st_autorefresh and not alarm_refresh_token:
             st_autorefresh(interval=600, limit=1, key="write_after_finish")
     else:
         drain_pending_writes(db, language)
+
+    if alarm_refresh_token and st_autorefresh:
+        st_autorefresh(
+            interval=ALARM_PLAY_SECONDS * 1000,
+            limit=1,
+            key=f"alarm_refresh_{alarm_refresh_token}",
+        )
+    elif timer_state.is_running() and st_autorefresh:
+        st_autorefresh(interval=500, key="timer_refresh")
 
     show_timer = timer_state.is_active() or timer_state.get_timer().get("phase") in {
         "completed",
@@ -541,12 +548,15 @@ def render_timer_panel(timezone: str, language: str) -> None:
             st.success(f"{text('last_status', language)}：{text(timer['saved_message'], language)}")
 
 
-def render_alarm_player() -> None:
+def render_alarm_player() -> int | None:
     alarm_count = timer_state.consume_pending_alarm_count()
     if alarm_count <= 0 or not ALARM_PATH.exists():
-        return
+        return None
 
+    token = int(st.session_state.get("alarm_refresh_token", 0)) + 1
+    st.session_state["alarm_refresh_token"] = token
     st.audio(ALARM_PATH.read_bytes(), format="audio/mpeg", autoplay=True)
+    return token
 
 
 def render_remaining_time(value: str, language: str) -> None:
