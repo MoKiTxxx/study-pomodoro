@@ -93,7 +93,6 @@ class SheetsDB:
         return normalized
 
     def _records_df(self, worksheet, expected_headers: list[str]) -> pd.DataFrame:
-        self._ensure_header(worksheet, expected_headers)
         records = worksheet.get_all_records()
         if not records:
             return pd.DataFrame(columns=expected_headers)
@@ -114,6 +113,12 @@ class SheetsDB:
 
     def upsert_pomodoro_event(self, record: dict[str, Any]) -> None:
         self._upsert_record(self.events_ws, POMODORO_EVENT_HEADERS, record)
+
+    def append_study_session(self, record: dict[str, Any]) -> None:
+        self._append_record(self.study_ws, STUDY_SESSION_HEADERS, record)
+
+    def append_pomodoro_event(self, record: dict[str, Any]) -> None:
+        self._append_record(self.events_ws, POMODORO_EVENT_HEADERS, record)
 
     def update_session_fields(
         self,
@@ -156,6 +161,10 @@ class SheetsDB:
             worksheet.update(values=[values], range_name=f"A{row_number}:{last_col}")
         else:
             worksheet.append_row(values, value_input_option="USER_ENTERED")
+
+    def _append_record(self, worksheet, expected_headers: list[str], record: dict[str, Any]) -> None:
+        values = [record.get(column, "") for column in expected_headers]
+        worksheet.append_row(values, value_input_option="USER_ENTERED")
 
     def _find_row_by_id(self, worksheet, header: list[str], record_id: str) -> int | None:
         if not record_id or "id" not in header:

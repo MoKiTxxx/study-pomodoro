@@ -175,22 +175,28 @@ def average_hours(df: pd.DataFrame, today: date, days: int) -> float:
     return round(total_hours / days, 2)
 
 
-def daily_hours_figure(daily_df: pd.DataFrame):
+def daily_hours_figure(
+    daily_df: pd.DataFrame,
+    title: str = "每日讀書時數",
+    x_label: str = "日期",
+    y_label: str = "時數",
+    empty_label: str = "尚無資料",
+):
     fig, ax = plt.subplots(figsize=(8, 4))
     if daily_df.empty:
-        ax.set_title("每日讀書時數")
-        ax.set_xlabel("日期")
-        ax.set_ylabel("時數")
-        ax.text(0.5, 0.5, "尚無資料", ha="center", va="center", transform=ax.transAxes)
+        ax.set_title(title)
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        ax.text(0.5, 0.5, empty_label, ha="center", va="center", transform=ax.transAxes)
         ax.set_xticks([])
         return fig
 
     plot_df = daily_df.copy()
     plot_df["date"] = pd.to_datetime(plot_df["date"])
     ax.plot(plot_df["date"], plot_df["hours"], marker="o", linewidth=2)
-    ax.set_title("每日讀書時數")
-    ax.set_xlabel("日期")
-    ax.set_ylabel("時數")
+    ax.set_title(title)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
     ax.grid(True, alpha=0.25)
     fig.autofmt_xdate()
     fig.tight_layout()

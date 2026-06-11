@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import uuid
 from datetime import datetime, timedelta
 from typing import Any
@@ -42,6 +43,7 @@ def init_timer_state() -> None:
             "phase": "idle",
             "pending_pomodoro_events": [],
             "pending_session_record": None,
+            "pending_alarm_count": 0,
             "saved_message": "",
         }
 
@@ -49,6 +51,17 @@ def init_timer_state() -> None:
 def get_timer() -> dict[str, Any]:
     init_timer_state()
     return st.session_state[TIMER_KEY]
+
+
+def reset_timer_state() -> None:
+    st.session_state[TIMER_KEY] = {
+        "active": False,
+        "phase": "idle",
+        "pending_pomodoro_events": [],
+        "pending_session_record": None,
+        "pending_alarm_count": 0,
+        "saved_message": "",
+    }
 
 
 def is_running() -> bool:
@@ -64,9 +77,19 @@ def is_active() -> bool:
 def start_session(values: dict[str, Any], timezone: str) -> None:
     started_at = now_in_timezone(timezone)
     session_id = str(uuid.uuid4())
-    pomodoro_minutes = int(values["pomodoro_minutes"])
-    break_minutes = int(values["break_minutes"])
-    target_pomodoros = int(values["target_pomodoros"])
+    total_focus_seconds = float(
+        values.get("total_focus_seconds")
+        or int(values.get("total_focus_minutes") or values["pomodoro_minutes"]) * 60
+    )
+    segment_focus_seconds = float(
+        values.get("segment_focus_seconds")
+        or int(values.get("pomodoro_minutes") or values.get("total_focus_minutes")) * 60
+    )
+    break_seconds = float(values.get("break_seconds") or int(values["break_minutes"]) * 60)
+    total_focus_minutes = round(total_focus_seconds / 60, 2)
+    pomodoro_minutes = round(segment_focus_seconds / 60, 2)
+    break_minutes = round(break_seconds / 60, 2)
+    target_pomodoros = int(values.get("target_pomodoros") or math.ceil(total_focus_seconds / segment_focus_seconds))
 
     st.session_state[TIMER_KEY] = {
         "active": True,
@@ -84,9 +107,14 @@ def start_session(values: dict[str, Any], timezone: str) -> None:
         "task_type": values["task_type"],
         "proof_status": values["proof_status"],
         "plan_note": values["plan_note"],
+        "total_focus_minutes": total_focus_minutes,
+        "target_focus_seconds": total_focus_seconds,
+        "segment_focus_seconds": segment_focus_seconds,
+        "break_seconds": break_seconds,
         "pomodoro_minutes": pomodoro_minutes,
         "break_minutes": break_minutes,
         "target_pomodoros": target_pomodoros,
+        "schedule_mode": values.get("schedule_mode", "manual"),
         "current_focus_seconds": 0.0,
         "current_break_seconds": 0.0,
         "total_focus_seconds": 0.0,
@@ -94,6 +122,7 @@ def start_session(values: dict[str, Any], timezone: str) -> None:
         "completed_pomodoros": 0,
         "pending_pomodoro_events": [],
         "pending_session_record": None,
+        "pending_alarm_count": 0,
         "saved_message": "",
     }
 
@@ -142,15 +171,22 @@ def advance_timer(timezone: str) -> None:
     for _ in range(max_transitions):
         phase = timer.get("phase")
         if phase == "focus":
-            pomodoro_seconds = int(timer["pomodoro_minutes"]) * 60
+            segment_seconds = float(timer.get("segment_focus_seconds", float(timer["pomodoro_minutes"]) * 60))
+            target_focus_seconds = float(
+                timer.get("target_focus_seconds", segment_seconds * int(timer.get("target_pomodoros", 1)))
+            )
             elapsed = _seconds_between(timer["phase_started_at"], current)
-            needed = max(0.0, pomodoro_seconds - float(timer["current_focus_seconds"]))
+            remaining_session_focus = max(0.0, target_focus_seconds - float(timer["total_focus_seconds"]))
+            remaining_segment_focus = max(0.0, segment_seconds - float(timer["current_focus_seconds"]))
+            needed = min(remaining_segment_focus, remaining_session_focus)
             if elapsed < needed:
                 return
 
             completed_at = _dt(timer["phase_started_at"]) + timedelta(seconds=needed)
+            event_focus_seconds = float(timer["current_focus_seconds"]) + needed
             timer["total_focus_seconds"] += needed
             timer["completed_pomodoros"] += 1
+            timer["pending_alarm_count"] = int(timer.get("pending_alarm_count", 0)) + 1
             timer["pending_pomodoro_events"].append(
                 {
                     "id": str(uuid.uuid4()),
@@ -158,14 +194,14 @@ def advance_timer(timezone: str) -> None:
                     "date": timer["date"],
                     "start_time": _time_text(_dt(timer["focus_started_at"])),
                     "end_time": _time_text(completed_at),
-                    "focus_minutes": int(timer["pomodoro_minutes"]),
+                    "focus_minutes": round(event_focus_seconds / 60, 2),
                     "status": "completed",
                     "created_at": _iso(completed_at),
                 }
             )
 
             timer["current_focus_seconds"] = 0.0
-            if int(timer["completed_pomodoros"]) >= int(timer["target_pomodoros"]):
+            if float(timer["total_focus_seconds"]) >= target_focus_seconds:
                 _finish_session(timer, "completed", completed_at)
                 return
 
@@ -175,7 +211,7 @@ def advance_timer(timezone: str) -> None:
             continue
 
         if phase == "break":
-            break_seconds = int(timer["break_minutes"]) * 60
+            break_seconds = float(timer.get("break_seconds", float(timer["break_minutes"]) * 60))
             if break_seconds <= 0:
                 break_ended_at = _dt(timer["phase_started_at"])
             else:
@@ -239,6 +275,7 @@ def _finish_session(timer: dict[str, Any], status: str, ended_at: datetime) -> N
     timer["phase"] = status
     timer["pending_session_record"] = build_session_record(timer, status, ended_at)
     timer["saved_message"] = status
+    timer["just_finished"] = True
 
 
 def build_session_record(timer: dict[str, Any], status: str, ended_at: datetime) -> dict[str, Any]:
@@ -254,9 +291,9 @@ def build_session_record(timer: dict[str, Any], status: str, ended_at: datetime)
         "proof_status": timer["proof_status"],
         "plan_note": timer["plan_note"],
         "focus_minutes": round(float(timer["total_focus_seconds"]) / 60, 2),
-        "break_minutes": int(timer["break_minutes"]),
+        "break_minutes": round(float(timer["total_break_seconds"]) / 60, 2),
         "completed_pomodoros": int(timer["completed_pomodoros"]),
-        "pomodoro_minutes": int(timer["pomodoro_minutes"]),
+        "pomodoro_minutes": round(float(timer.get("segment_focus_seconds", float(timer["pomodoro_minutes"]) * 60)) / 60, 2),
         "status": status,
         "output": "",
         "stuck": "",
@@ -269,10 +306,15 @@ def build_session_record(timer: dict[str, Any], status: str, ended_at: datetime)
 def snapshot(timezone: str) -> dict[str, Any]:
     timer = get_timer()
     if not timer.get("active"):
+        focus_seconds = int(float(timer.get("total_focus_seconds", 0)))
+        break_seconds = int(float(timer.get("total_break_seconds", 0)))
         return {
             "active": False,
             "phase": timer.get("phase", "idle"),
-            "focus_minutes": 0.0,
+            "focus_minutes": round(focus_seconds / 60, 2),
+            "focus_seconds": focus_seconds,
+            "break_elapsed_minutes": round(break_seconds / 60, 2),
+            "break_elapsed_seconds": break_seconds,
             "remaining_seconds": 0,
             "progress": 0.0,
             "completed_pomodoros": timer.get("completed_pomodoros", 0),
@@ -290,26 +332,33 @@ def snapshot(timezone: str) -> dict[str, Any]:
         elapsed = _seconds_between(timer["phase_started_at"], current)
         total_focus += elapsed
         current_focus += elapsed
-        duration = int(timer["pomodoro_minutes"]) * 60
-        remaining = max(0, int(duration - current_focus))
+        segment_seconds = float(timer.get("segment_focus_seconds", float(timer["pomodoro_minutes"]) * 60))
+        target_focus_seconds = float(
+            timer.get("target_focus_seconds", segment_seconds * int(timer.get("target_pomodoros", 1)))
+        )
+        focus_before_current_segment = max(0.0, total_focus - current_focus)
+        duration = min(segment_seconds, max(0.0, target_focus_seconds - focus_before_current_segment))
+        remaining = max(0, math.ceil(duration - current_focus))
         progress = min(1.0, current_focus / duration) if duration else 1.0
     elif phase == "break":
         elapsed = _seconds_between(timer["phase_started_at"], current)
         total_break += elapsed
         current_break += elapsed
-        duration = int(timer["break_minutes"]) * 60
-        remaining = max(0, int(duration - current_break))
+        duration = float(timer.get("break_seconds", float(timer["break_minutes"]) * 60))
+        remaining = max(0, math.ceil(duration - current_break))
         progress = min(1.0, current_break / duration) if duration else 1.0
     else:
-        duration = int(timer["pomodoro_minutes"]) * 60
-        remaining = max(0, int(duration - current_focus))
+        duration = float(timer.get("segment_focus_seconds", float(timer["pomodoro_minutes"]) * 60))
+        remaining = max(0, math.ceil(duration - current_focus))
         progress = min(1.0, current_focus / duration) if duration else 1.0
 
     return {
         "active": True,
         "phase": phase,
         "focus_minutes": round(total_focus / 60, 2),
+        "focus_seconds": int(total_focus),
         "break_elapsed_minutes": round(total_break / 60, 2),
+        "break_elapsed_seconds": int(total_break),
         "remaining_seconds": remaining,
         "progress": progress,
         "completed_pomodoros": int(timer["completed_pomodoros"]),
@@ -323,9 +372,26 @@ def snapshot(timezone: str) -> dict[str, Any]:
 def format_seconds(total_seconds: int) -> str:
     minutes, seconds = divmod(max(0, int(total_seconds)), 60)
     hours, minutes = divmod(minutes, 60)
-    if hours:
-        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-    return f"{minutes:02d}:{seconds:02d}"
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def consume_just_finished() -> bool:
+    timer = get_timer()
+    just_finished = bool(timer.get("just_finished"))
+    timer["just_finished"] = False
+    return just_finished
+
+
+def consume_pending_alarm_count() -> int:
+    timer = get_timer()
+    count = int(timer.get("pending_alarm_count", 0))
+    timer["pending_alarm_count"] = 0
+    return count
+
+
+def has_pending_writes() -> bool:
+    timer = get_timer()
+    return bool(timer.get("pending_pomodoro_events") or timer.get("pending_session_record"))
 
 
 def pending_pomodoro_events() -> list[dict[str, Any]]:
