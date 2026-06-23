@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import json
-import base64
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -557,22 +555,24 @@ def render_alarm_player() -> int | None:
 
     token = int(st.session_state.get("alarm_refresh_token", 0)) + 1
     st.session_state["alarm_refresh_token"] = token
-    audio_data = base64.b64encode(ALARM_PATH.read_bytes()).decode("ascii")
-    components.html(
-        f"""
-        <audio id="pomodoro-alarm" autoplay style="display: none;">
-            <source src="data:audio/mpeg;base64,{audio_data}" type="audio/mpeg">
-        </audio>
-        <script>
-        const alarm = document.getElementById("pomodoro-alarm");
-        if (alarm) {{
-            alarm.volume = 1;
-            alarm.play().catch(() => {{}});
-        }}
-        </script>
+
+    st.markdown(
+        """
+        <style>
+        [data-testid="stAudio"] {
+            position: absolute !important;
+            width: 1px !important;
+            height: 1px !important;
+            min-height: 1px !important;
+            overflow: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+        </style>
         """,
-        height=0,
+        unsafe_allow_html=True,
     )
+    st.audio(ALARM_PATH.read_bytes(), format="audio/mpeg", autoplay=True)
     return token
 
 
