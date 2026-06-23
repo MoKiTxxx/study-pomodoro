@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import base64
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -24,7 +26,6 @@ from sheets_db import SheetsDB
 st.set_page_config(page_title="Study Pomodoro Tracker", layout="wide", initial_sidebar_state="expanded")
 
 ALARM_PATH = Path(__file__).with_name("Alarm.mp3")
-ALARM_PLAY_SECONDS = 8
 
 # Streamlit's built-in toolbar is not localized by the app language switch.
 st.markdown(
@@ -464,22 +465,16 @@ def drain_pending_writes(db: SheetsDB, language: str) -> None:
 
 def render_start_page(db: SheetsDB, timezone: str, language: str) -> None:
     timer_state.advance_timer(timezone)
-    alarm_refresh_token = render_alarm_player()
+    render_alarm_player()
     just_finished = timer_state.consume_just_finished()
 
     if just_finished:
-        if st_autorefresh and not alarm_refresh_token:
+        if st_autorefresh:
             st_autorefresh(interval=600, limit=1, key="write_after_finish")
     else:
         drain_pending_writes(db, language)
 
-    if alarm_refresh_token and st_autorefresh:
-        st_autorefresh(
-            interval=ALARM_PLAY_SECONDS * 1000,
-            limit=1,
-            key=f"alarm_refresh_{alarm_refresh_token}",
-        )
-    elif timer_state.is_running() and st_autorefresh:
+    if timer_state.is_running() and st_autorefresh:
         st_autorefresh(interval=500, key="timer_refresh")
 
     show_timer = timer_state.is_active() or timer_state.get_timer().get("phase") in {
@@ -556,23 +551,34 @@ def render_alarm_player() -> int | None:
     token = int(st.session_state.get("alarm_refresh_token", 0)) + 1
     st.session_state["alarm_refresh_token"] = token
 
-    st.markdown(
-        """
-        <style>
-        [data-testid="stAudio"] {
-            position: absolute !important;
-            width: 1px !important;
-            height: 1px !important;
-            min-height: 1px !important;
-            overflow: hidden !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
-        }
-        </style>
+    audio_data = base64.b64encode(ALARM_PATH.read_bytes()).decode("ascii")
+    components.html(
+        f"""
+        <script>
+        (() => {{
+            const src = "data:audio/mpeg;base64,{audio_data}";
+            const play = (targetWindow) => {{
+                const audio = new targetWindow.Audio(src);
+                audio.volume = 1;
+                targetWindow.__pomodoroAlarm = audio;
+                audio.addEventListener("ended", () => {{
+                    if (targetWindow.__pomodoroAlarm === audio) {{
+                        targetWindow.__pomodoroAlarm = null;
+                    }}
+                }});
+                audio.play().catch(() => {{}});
+            }};
+
+            try {{
+                play(window.parent || window);
+            }} catch (error) {{
+                play(window);
+            }}
+        }})();
+        </script>
         """,
-        unsafe_allow_html=True,
+        height=0,
     )
-    st.audio(ALARM_PATH.read_bytes(), format="audio/mpeg", autoplay=True)
     return token
 
 
