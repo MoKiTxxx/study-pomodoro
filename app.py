@@ -22,26 +22,9 @@ from auth import require_passcode
 from config import ConfigError, load_config, validate_runtime_config
 from sheets_db import SheetsDB
 
-
-st.set_page_config(page_title="Study Pomodoro Tracker", layout="wide", initial_sidebar_state="expanded")
-
 ALARM_PATH = Path(__file__).with_name("Alarm.mp3")
-
-# Streamlit's built-in toolbar is not localized by the app language switch.
-st.markdown(
-    """
-    <style>
-    #MainMenu,
-    [data-testid="stDeployButton"],
-    [data-testid="stDecoration"],
-    footer {
-        display: none !important;
-        visibility: hidden !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+TIMER_REFRESH_MS = 500
+WRITE_AFTER_FINISH_REFRESH_MS = 600
 
 
 LANGUAGES = {
@@ -77,13 +60,14 @@ TASK_TYPES = [
 
 SCHEDULE_MODES = ["manual", "auto"]
 
-PROOF_STATUSES = [
-    "not_started",
-    "understood",
-    "can_recall",
-    "can_solve",
-    "can_explain",
-    "needs_review",
+SEARCH_FIELDS = [
+    "subject",
+    "book_or_course",
+    "chapter",
+    "task_type",
+    "output",
+    "stuck",
+    "next_action",
 ]
 
 I18N = {
@@ -349,6 +333,26 @@ I18N["en"].update(
 )
 
 
+def configure_page() -> None:
+    st.set_page_config(page_title="Study Pomodoro Tracker", layout="wide", initial_sidebar_state="expanded")
+
+    # Streamlit's built-in toolbar is not localized by the app language switch.
+    st.markdown(
+        """
+        <style>
+        #MainMenu,
+        [data-testid="stDeployButton"],
+        [data-testid="stDecoration"],
+        footer {
+            display: none !important;
+            visibility: hidden !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 @st.cache_resource(show_spinner=False)
 def get_db(sheet_id: str, credentials_json: str) -> SheetsDB:
     return SheetsDB(sheet_id, json.loads(credentials_json))
@@ -378,6 +382,7 @@ def page_label(page_key: str, language: str) -> str:
 
 
 def main() -> None:
+    configure_page()
     require_passcode()
     config = load_config()
     try:
@@ -470,21 +475,14 @@ def render_start_page(db: SheetsDB, timezone: str, language: str) -> None:
 
     if just_finished:
         if st_autorefresh:
-            st_autorefresh(interval=600, limit=1, key="write_after_finish")
+            st_autorefresh(interval=WRITE_AFTER_FINISH_REFRESH_MS, limit=1, key="write_after_finish")
     else:
         drain_pending_writes(db, language)
 
     if timer_state.is_running() and st_autorefresh:
-        st_autorefresh(interval=500, key="timer_refresh")
+        st_autorefresh(interval=TIMER_REFRESH_MS, key="timer_refresh")
 
-    show_timer = timer_state.is_active() or timer_state.get_timer().get("phase") in {
-        "completed",
-        "saved_partial",
-        "stopped",
-        "paused",
-    }
-
-    if show_timer:
+    if timer_state.should_show_timer_panel():
         render_timer_panel(timezone, language)
         action_taken = render_timer_controls(timezone, language)
         if action_taken:
@@ -543,10 +541,10 @@ def render_timer_panel(timezone: str, language: str) -> None:
             st.success(f"{text('last_status', language)}：{text(timer['saved_message'], language)}")
 
 
-def render_alarm_player() -> int | None:
+def render_alarm_player() -> None:
     alarm_count = timer_state.consume_pending_alarm_count()
     if alarm_count <= 0 or not ALARM_PATH.exists():
-        return None
+        return
 
     token = int(st.session_state.get("alarm_refresh_token", 0)) + 1
     st.session_state["alarm_refresh_token"] = token
@@ -556,10 +554,12 @@ def render_alarm_player() -> int | None:
         f"""
         <script>
         (() => {{
+            const alarmToken = {token};
             const src = "data:audio/mpeg;base64,{audio_data}";
             const play = (targetWindow) => {{
                 const audio = new targetWindow.Audio(src);
                 audio.volume = 1;
+                targetWindow.__pomodoroAlarmToken = alarmToken;
                 targetWindow.__pomodoroAlarm = audio;
                 audio.addEventListener("ended", () => {{
                     if (targetWindow.__pomodoroAlarm === audio) {{
@@ -579,7 +579,6 @@ def render_alarm_player() -> int | None:
         """,
         height=0,
     )
-    return token
 
 
 def render_remaining_time(value: str, language: str) -> None:
@@ -627,6 +626,44 @@ def render_timer_controls(timezone: str, language: str) -> bool:
     return action_taken
 
 
+def build_manual_schedule(
+    total_focus_minutes: int,
+    segment_focus_minutes: int,
+    break_minutes: int,
+) -> dict[str, float | int]:
+    segment_focus_minutes = max(1, int(segment_focus_minutes))
+    total_focus_minutes = max(1, int(total_focus_minutes))
+    return {
+        "planned_segments": (total_focus_minutes + segment_focus_minutes - 1) // segment_focus_minutes,
+        "total_focus_seconds": total_focus_minutes * 60,
+        "segment_focus_seconds": segment_focus_minutes * 60,
+        "break_seconds": max(0, int(break_minutes)) * 60,
+    }
+
+
+def build_auto_schedule(
+    total_time_minutes: int,
+    planned_segments: int,
+    total_break_minutes: int,
+) -> dict[str, float | int]:
+    planned_segments = max(1, int(planned_segments))
+    total_seconds = max(1, int(total_time_minutes)) * 60
+    requested_total_break_seconds = max(0, int(total_break_minutes)) * 60
+    break_count = max(0, planned_segments - 1)
+    min_focus_seconds = planned_segments
+    actual_total_break_seconds = min(requested_total_break_seconds, max(0, total_seconds - min_focus_seconds))
+    break_seconds = actual_total_break_seconds / break_count if break_count else 0
+    total_focus_seconds = max(min_focus_seconds, total_seconds - (break_seconds * break_count))
+    return {
+        "planned_segments": planned_segments,
+        "total_focus_seconds": total_focus_seconds,
+        "segment_focus_seconds": total_focus_seconds / planned_segments,
+        "break_seconds": break_seconds,
+        "requested_total_break_seconds": requested_total_break_seconds,
+        "actual_total_break_seconds": actual_total_break_seconds,
+    }
+
+
 def render_start_form(timezone: str, language: str) -> None:
     st.subheader(text("start_title", language))
     disabled = timer_state.is_active()
@@ -667,11 +704,11 @@ def render_start_form(timezone: str, language: str) -> None:
             disabled=disabled,
             key="manual_break_minutes",
         )
-        planned_segments = (int(total_focus_minutes) + int(segment_focus_minutes) - 1) // int(segment_focus_minutes)
-        total_focus_seconds = int(total_focus_minutes) * 60
-        segment_focus_seconds = int(segment_focus_minutes) * 60
-        break_seconds = int(break_minutes) * 60
-        st.caption(f"{text('planned_segments', language)}: {planned_segments}. {text('segmented_break_hint', language)}")
+        schedule = build_manual_schedule(int(total_focus_minutes), int(segment_focus_minutes), int(break_minutes))
+        st.caption(
+            f"{text('planned_segments', language)}: {schedule['planned_segments']}. "
+            f"{text('segmented_break_hint', language)}"
+        )
     else:
         st.caption(text("auto_mode_hint", language))
         total_time_minutes = st.number_input(
@@ -701,21 +738,13 @@ def render_start_form(timezone: str, language: str) -> None:
             disabled=disabled,
             key="auto_total_break_minutes",
         )
-        total_seconds = int(total_time_minutes) * 60
-        requested_total_break_seconds = int(total_break_minutes) * 60
-        break_count = max(0, int(planned_segments) - 1)
-        min_focus_seconds = int(planned_segments)
-        actual_total_break_seconds = min(requested_total_break_seconds, max(0, total_seconds - min_focus_seconds))
-        break_seconds = actual_total_break_seconds / break_count if break_count else 0
-        break_total_seconds = break_seconds * break_count
-        total_focus_seconds = max(min_focus_seconds, total_seconds - break_total_seconds)
-        segment_focus_seconds = total_focus_seconds / int(planned_segments) if planned_segments else 0
+        schedule = build_auto_schedule(int(total_time_minutes), int(planned_segments), int(total_break_minutes))
         st.caption(
-            f"{text('auto_total_focus', language)}: {timer_state.format_seconds(int(total_focus_seconds))}\n\n"
-            f"{text('auto_segment_focus', language)}: {timer_state.format_seconds(round(segment_focus_seconds))}\n\n"
-            f"{text('auto_break_per_gap', language)}: {timer_state.format_seconds(round(break_seconds))}"
+            f"{text('auto_total_focus', language)}: {timer_state.format_seconds(schedule['total_focus_seconds'])}\n\n"
+            f"{text('auto_segment_focus', language)}: {timer_state.format_seconds(schedule['segment_focus_seconds'])}\n\n"
+            f"{text('auto_break_per_gap', language)}: {timer_state.format_seconds(schedule['break_seconds'])}"
         )
-        if actual_total_break_seconds < requested_total_break_seconds:
+        if schedule["actual_total_break_seconds"] < schedule["requested_total_break_seconds"]:
             st.warning(text("auto_adjusted_break", language))
 
     task_type = st.selectbox(
@@ -748,13 +777,13 @@ def render_start_form(timezone: str, language: str) -> None:
             "task_type": saved_task_type,
             "proof_status": "",
             "schedule_mode": schedule_mode,
-            "total_focus_seconds": total_focus_seconds,
-            "segment_focus_seconds": segment_focus_seconds,
-            "break_seconds": break_seconds,
-            "total_focus_minutes": round(total_focus_seconds / 60, 2),
-            "pomodoro_minutes": round(segment_focus_seconds / 60, 2),
-            "break_minutes": round(break_seconds / 60, 2),
-            "target_pomodoros": int(planned_segments),
+            "total_focus_seconds": schedule["total_focus_seconds"],
+            "segment_focus_seconds": schedule["segment_focus_seconds"],
+            "break_seconds": schedule["break_seconds"],
+            "total_focus_minutes": round(float(schedule["total_focus_seconds"]) / 60, 2),
+            "pomodoro_minutes": round(float(schedule["segment_focus_seconds"]) / 60, 2),
+            "break_minutes": round(float(schedule["break_seconds"]) / 60, 2),
+            "target_pomodoros": int(schedule["planned_segments"]),
             "plan_note": plan_note.strip(),
         }
         timer_state.start_session(values, timezone)
@@ -849,19 +878,10 @@ def render_stats_page(db: SheetsDB, timezone: str, language: str) -> None:
 def render_search_page(db: SheetsDB, language: str) -> None:
     drain_pending_writes(db, language)
     df = db.get_study_sessions_df()
-    fields = [
-        "subject",
-        "book_or_course",
-        "chapter",
-        "task_type",
-        "output",
-        "stuck",
-        "next_action",
-    ]
 
     filters = {}
     rows = [st.columns(4), st.columns(4)]
-    for index, field in enumerate(fields):
+    for index, field in enumerate(SEARCH_FIELDS):
         with rows[index // 4][index % 4]:
             filters[field] = st.text_input(COLUMN_LABELS.get(language, {}).get(field, field))
 

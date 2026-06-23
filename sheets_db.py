@@ -108,12 +108,6 @@ class SheetsDB:
     def get_pomodoro_events_df(self) -> pd.DataFrame:
         return self._records_df(self.events_ws, POMODORO_EVENT_HEADERS)
 
-    def upsert_study_session(self, record: dict[str, Any]) -> None:
-        self._upsert_record(self.study_ws, STUDY_SESSION_HEADERS, record)
-
-    def upsert_pomodoro_event(self, record: dict[str, Any]) -> None:
-        self._upsert_record(self.events_ws, POMODORO_EVENT_HEADERS, record)
-
     def append_study_session(self, record: dict[str, Any]) -> None:
         self._append_record(self.study_ws, STUDY_SESSION_HEADERS, record)
 
@@ -150,17 +144,6 @@ class SheetsDB:
             )
         if updates:
             self.study_ws.batch_update(updates)
-
-    def _upsert_record(self, worksheet, expected_headers: list[str], record: dict[str, Any]) -> None:
-        header = self._ensure_header(worksheet, expected_headers)
-        values = [record.get(column, "") for column in header]
-        row_number = self._find_row_by_id(worksheet, header, str(record.get("id", "")))
-
-        if row_number:
-            last_col = rowcol_to_a1(row_number, len(header))
-            worksheet.update(values=[values], range_name=f"A{row_number}:{last_col}")
-        else:
-            worksheet.append_row(values, value_input_option="USER_ENTERED")
 
     def _append_record(self, worksheet, expected_headers: list[str], record: dict[str, Any]) -> None:
         values = [record.get(column, "") for column in expected_headers]

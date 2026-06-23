@@ -10,6 +10,19 @@ import streamlit as st
 
 
 TIMER_KEY = "timer"
+ACTIVE_PHASES = {"focus", "break"}
+VISIBLE_INACTIVE_PHASES = {"completed", "saved_partial", "stopped", "paused"}
+
+
+def _empty_timer_state() -> dict[str, Any]:
+    return {
+        "active": False,
+        "phase": "idle",
+        "pending_pomodoro_events": [],
+        "pending_session_record": None,
+        "pending_alarm_count": 0,
+        "saved_message": "",
+    }
 
 
 def now_in_timezone(timezone: str) -> datetime:
@@ -38,14 +51,7 @@ def _date_text(dt: datetime) -> str:
 
 def init_timer_state() -> None:
     if TIMER_KEY not in st.session_state:
-        st.session_state[TIMER_KEY] = {
-            "active": False,
-            "phase": "idle",
-            "pending_pomodoro_events": [],
-            "pending_session_record": None,
-            "pending_alarm_count": 0,
-            "saved_message": "",
-        }
+        st.session_state[TIMER_KEY] = _empty_timer_state()
 
 
 def get_timer() -> dict[str, Any]:
@@ -54,19 +60,12 @@ def get_timer() -> dict[str, Any]:
 
 
 def reset_timer_state() -> None:
-    st.session_state[TIMER_KEY] = {
-        "active": False,
-        "phase": "idle",
-        "pending_pomodoro_events": [],
-        "pending_session_record": None,
-        "pending_alarm_count": 0,
-        "saved_message": "",
-    }
+    st.session_state[TIMER_KEY] = _empty_timer_state()
 
 
 def is_running() -> bool:
     timer = get_timer()
-    return bool(timer.get("active")) and timer.get("phase") in {"focus", "break"}
+    return bool(timer.get("active")) and timer.get("phase") in ACTIVE_PHASES
 
 
 def is_active() -> bool:
@@ -74,22 +73,36 @@ def is_active() -> bool:
     return bool(timer.get("active"))
 
 
+def should_show_timer_panel() -> bool:
+    timer = get_timer()
+    return is_active() or timer.get("phase") in VISIBLE_INACTIVE_PHASES
+
+
 def start_session(values: dict[str, Any], timezone: str) -> None:
     started_at = now_in_timezone(timezone)
     session_id = str(uuid.uuid4())
-    total_focus_seconds = float(
-        values.get("total_focus_seconds")
-        or int(values.get("total_focus_minutes") or values["pomodoro_minutes"]) * 60
+    total_focus_seconds = max(
+        1.0,
+        float(
+            values.get("total_focus_seconds")
+            or int(values.get("total_focus_minutes") or values["pomodoro_minutes"]) * 60
+        ),
     )
-    segment_focus_seconds = float(
-        values.get("segment_focus_seconds")
-        or int(values.get("pomodoro_minutes") or values.get("total_focus_minutes")) * 60
+    segment_focus_seconds = max(
+        1.0,
+        float(
+            values.get("segment_focus_seconds")
+            or int(values.get("pomodoro_minutes") or values.get("total_focus_minutes")) * 60
+        ),
     )
-    break_seconds = float(values.get("break_seconds") or int(values["break_minutes"]) * 60)
+    break_seconds = max(0.0, float(values.get("break_seconds") or int(values["break_minutes"]) * 60))
     total_focus_minutes = round(total_focus_seconds / 60, 2)
     pomodoro_minutes = round(segment_focus_seconds / 60, 2)
     break_minutes = round(break_seconds / 60, 2)
-    target_pomodoros = int(values.get("target_pomodoros") or math.ceil(total_focus_seconds / segment_focus_seconds))
+    target_pomodoros = max(
+        1,
+        int(values.get("target_pomodoros") or math.ceil(total_focus_seconds / segment_focus_seconds)),
+    )
 
     st.session_state[TIMER_KEY] = {
         "active": True,
@@ -105,8 +118,8 @@ def start_session(values: dict[str, Any], timezone: str) -> None:
         "book_or_course": values["book_or_course"],
         "chapter": values["chapter"],
         "task_type": values["task_type"],
-        "proof_status": values["proof_status"],
-        "plan_note": values["plan_note"],
+        "proof_status": values.get("proof_status", ""),
+        "plan_note": values.get("plan_note", ""),
         "total_focus_minutes": total_focus_minutes,
         "target_focus_seconds": total_focus_seconds,
         "segment_focus_seconds": segment_focus_seconds,
@@ -129,7 +142,7 @@ def start_session(values: dict[str, Any], timezone: str) -> None:
 
 def pause_session(timezone: str) -> None:
     timer = get_timer()
-    if not timer.get("active") or timer.get("phase") not in {"focus", "break"}:
+    if not timer.get("active") or timer.get("phase") not in ACTIVE_PHASES:
         return
 
     current = now_in_timezone(timezone)
@@ -162,7 +175,7 @@ def resume_session(timezone: str) -> None:
 
 def advance_timer(timezone: str) -> None:
     timer = get_timer()
-    if not timer.get("active") or timer.get("phase") not in {"focus", "break"}:
+    if not timer.get("active") or timer.get("phase") not in ACTIVE_PHASES:
         return
 
     current = now_in_timezone(timezone)
@@ -230,22 +243,6 @@ def advance_timer(timezone: str) -> None:
             continue
 
         return
-
-
-def complete_manually(timezone: str) -> None:
-    timer = get_timer()
-    if not timer.get("active"):
-        return
-    current = _commit_active_phase_elapsed(timer, timezone)
-    _finish_session(timer, "completed", current)
-
-
-def save_partial_session(timezone: str) -> None:
-    timer = get_timer()
-    if not timer.get("active"):
-        return
-    current = _commit_active_phase_elapsed(timer, timezone)
-    _finish_session(timer, "saved_partial", current)
 
 
 def stop_session(timezone: str) -> None:
@@ -369,7 +366,7 @@ def snapshot(timezone: str) -> dict[str, Any]:
     }
 
 
-def format_seconds(total_seconds: int) -> str:
+def format_seconds(total_seconds: int | float) -> str:
     minutes, seconds = divmod(max(0, int(total_seconds)), 60)
     hours, minutes = divmod(minutes, 60)
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
