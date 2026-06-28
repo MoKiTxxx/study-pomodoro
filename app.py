@@ -70,6 +70,138 @@ SEARCH_FIELDS = [
     "next_action",
 ]
 
+UI_STYLE = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Noto+Sans+TC:wght@400;600;700&display=swap');
+
+:root {
+  --bg-1: #f3f7ff;
+  --bg-2: #ecfdf5;
+  --surface: #ffffff;
+  --text: #0f172a;
+  --muted: #475569;
+  --line: #d4e2fa;
+  --ring: #e2e8f0;
+  --focus: #0ea5e9;
+  --focus-soft: #ecfeff;
+  --break: #3b82f6;
+  --break-soft: #eff6ff;
+  --pause: #f59e0b;
+  --pause-soft: #fef3c7;
+}
+
+.main .block-container {
+  background: linear-gradient(160deg, var(--bg-1), var(--bg-2));
+}
+
+html, body, [class*="css"] {
+  font-family: "Manrope", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+}
+
+#MainMenu,
+[data-testid="stDeployButton"],
+[data-testid="stDecoration"],
+footer {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+.pom-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 1.2rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.phase-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  padding: 0.4rem 0.75rem;
+  font-weight: 700;
+  border: 1px solid;
+  font-size: 0.95rem;
+}
+
+.phase-focus {
+  color: #0369a1;
+  background: var(--focus-soft);
+  border-color: #bae6fd;
+}
+
+.phase-break {
+  color: #1d4ed8;
+  background: var(--break-soft);
+  border-color: #bfdbfe;
+}
+
+.phase-paused {
+  color: #b45309;
+  background: var(--pause-soft);
+  border-color: #fde68a;
+}
+
+.phase-completed,
+.phase-saved_partial,
+.phase-stopped {
+  color: #16a34a;
+  background: #dcfce7;
+  border-color: #bbf7d0;
+}
+
+.phase-idle {
+  color: #64748b;
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.metric-card {
+  border: 1px solid var(--ring);
+  border-radius: 14px;
+  background: #fbfdff;
+  padding: 0.8rem;
+}
+
+.metric-label {
+  color: var(--muted);
+  font-size: 0.84rem;
+  margin-bottom: 0.35rem;
+}
+
+.metric-value {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 1.45rem;
+  line-height: 1.2;
+}
+
+.subtle-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.75rem 1rem;
+  background: #ffffff;
+  margin: 0.5rem 0 1rem;
+}
+
+.stButton > button {
+  border-radius: 12px !important;
+  border: 1px solid #bfdbfe !important;
+  background: linear-gradient(90deg, #e0f2fe, #dbeafe) !important;
+  color: #0f172a !important;
+  font-weight: 700;
+  transition: all .2s ease !important;
+}
+
+.stButton > button:hover {
+  transform: translateY(-1px);
+  border-color: #93c5fd !important;
+}
+</style>
+"""
+
 I18N = {
     "zh": {
         "app_title": "讀書番茄鐘紀錄系統",
@@ -162,6 +294,15 @@ I18N = {
         "proof_can_solve": "可解題",
         "proof_can_explain": "可講解",
         "proof_needs_review": "需要複習",
+        "study_plan_setup": "學習計畫設定",
+        "task_information": "任務資訊",
+        "summary": "摘要",
+        "overall_progress": "整體進度",
+        "csv_export": "CSV 匯出",
+        "filters": "篩選條件",
+        "no_records_today": "目前今天尚無紀錄。",
+        "controls": "操作控制",
+        "session_ready": "會話準備完成，請點擊下方開始。",
     },
     "en": {
         "app_title": "Study Pomodoro Tracker",
@@ -254,9 +395,40 @@ I18N = {
         "proof_can_solve": "Can solve",
         "proof_can_explain": "Can explain",
         "proof_needs_review": "Needs review",
+        "study_plan_setup": "Study plan setup",
+        "task_information": "Task information",
+        "summary": "Summary",
+        "overall_progress": "Overall progress",
+        "csv_export": "CSV Export",
+        "filters": "Filters",
+        "no_records_today": "No records for today yet.",
+        "controls": "Controls",
+        "session_ready": "Session ready, please start from below.",
     },
 }
 
+I18N["zh"].update(
+    {
+        "total_focus_minutes": "總專注時間（分鐘）",
+        "segment_focus_minutes": "每段專注時間（分鐘）",
+        "break_minutes": "每段休息時間（分鐘）",
+        "planned_segments": "預計專注段數",
+        "segmented_break_hint": "系統會在每段專注之間自動加入休息；最後一段可能較短。",
+        "schedule_mode": "計時模式",
+        "mode_manual": "手動分段",
+        "mode_auto": "自動模式",
+        "manual_mode_hint": "手動設定總專注時間、每段專注時間與每段休息時間。",
+        "auto_mode_hint": "自動模式會用總時間扣掉段間休息，再把剩餘專注時間平均分成 n 段。",
+        "total_time_minutes": "總時間（分鐘，含休息）",
+        "auto_segments": "分成幾段專注",
+        "total_break_minutes": "總休息時間（分鐘）",
+        "auto_total_focus": "自動算出總專注時間",
+        "auto_segment_focus": "自動算出每段專注時間",
+        "auto_break_per_gap": "自動算出每次休息時間",
+        "auto_adjusted_break": "總時間不足以放入原本的休息時間，已自動縮短休息。",
+        "auto_actual_break": "實際每段休息時間",
+    }
+)
 COLUMN_LABELS = {
     "zh": {
         "id": "ID",
@@ -335,22 +507,7 @@ I18N["en"].update(
 
 def configure_page() -> None:
     st.set_page_config(page_title="Study Pomodoro Tracker", layout="wide", initial_sidebar_state="expanded")
-
-    # Streamlit's built-in toolbar is not localized by the app language switch.
-    st.markdown(
-        """
-        <style>
-        #MainMenu,
-        [data-testid="stDeployButton"],
-        [data-testid="stDecoration"],
-        footer {
-            display: none !important;
-            visibility: hidden !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown(UI_STYLE, unsafe_allow_html=True)
 
 
 @st.cache_resource(show_spinner=False)
@@ -369,6 +526,39 @@ def get_language() -> str:
 def text(key: str, language: str | None = None) -> str:
     lang = language or get_language()
     return I18N.get(lang, I18N["zh"]).get(key, I18N["en"].get(key, key))
+
+
+def phase_class(phase: str) -> str:
+    if phase == "focus":
+        return "phase-focus"
+    if phase == "break":
+        return "phase-break"
+    if phase == "paused":
+        return "phase-paused"
+    if phase in {"completed", "saved_partial", "stopped"}:
+        return "phase-completed"
+    return "phase-idle"
+
+
+def render_metric_card(label: str, value: str, icon: str) -> None:
+    st.markdown(
+        f"""
+        <div class="metric-card">
+          <div class="metric-label">{icon} {label}</div>
+          <div class="metric-value">{value}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_metric_cards(items: list[tuple[str, str, str]]) -> None:
+    if not items:
+        return
+    cols = st.columns(len(items))
+    for col, item in zip(cols, items):
+        with col:
+            render_metric_card(*item)
 
 
 def option_label(prefix: str, value: str, language: str) -> str:
@@ -504,41 +694,46 @@ def render_timer_panel(timezone: str, language: str) -> None:
     timer = timer_state.get_timer()
     snap = timer_state.snapshot(timezone)
 
-    st.subheader(text("timer_title", language))
+    st.markdown(f"<h2>{text('timer_title', language)}</h2>", unsafe_allow_html=True)
     phase = snap.get("phase", "idle")
     render_status_value(phase, language)
 
     if snap.get("active"):
-        render_remaining_time(timer_state.format_seconds(snap["remaining_seconds"]), language)
-        st.progress(float(snap["progress"]))
-        col1, col2, col3 = st.columns(3)
-        col1.metric(text("focused_time", language), timer_state.format_seconds(snap["focus_seconds"]))
-        col2.metric(
-            text("pomodoros", language),
-            f'{snap["completed_pomodoros"]} / {snap["target_pomodoros"]}',
-        )
-        col3.metric(
-            text("break_time", language),
-            timer_state.format_seconds(snap.get("break_elapsed_seconds", 0)),
-        )
-        st.caption(
-            f'{snap.get("subject", "")} / {snap.get("book_or_course", "")} / {snap.get("chapter", "")}'
-        )
+        with st.container(border=True):
+            render_remaining_time(timer_state.format_seconds(snap["remaining_seconds"]), language)
+            st.progress(float(snap["progress"]))
+            render_metric_cards(
+                [
+                    (text("focused_time", language), timer_state.format_seconds(snap["focus_seconds"]), "時間"),
+                    (
+                        text("pomodoros", language),
+                        f'{snap["completed_pomodoros"]} / {snap["target_pomodoros"]}',
+                        "番茄",
+                    ),
+                    (text("break_time", language), timer_state.format_seconds(snap.get("break_elapsed_seconds", 0)), "休息"),
+                ]
+            )
+            st.caption(
+                f'{snap.get("subject", "")} / {snap.get("book_or_course", "")} / {snap.get("chapter", "")}'
+            )
     else:
-        render_remaining_time("00:00:00", language)
-        st.progress(0.0)
-        col1, col2, col3 = st.columns(3)
-        col1.metric(text("focused_time", language), timer_state.format_seconds(snap.get("focus_seconds", 0)))
-        col2.metric(
-            text("pomodoros", language),
-            f'{snap.get("completed_pomodoros", 0)} / {snap.get("target_pomodoros", 0)}',
-        )
-        col3.metric(
-            text("break_time", language),
-            timer_state.format_seconds(snap.get("break_elapsed_seconds", 0)),
-        )
+        with st.container(border=True):
+            st.markdown(f"<div class='subtle-card'>{text('session_ready', language)}</div>", unsafe_allow_html=True)
+            render_remaining_time("00:00:00", language)
+            st.progress(0.0)
+            render_metric_cards(
+                [
+                    (text("focused_time", language), timer_state.format_seconds(snap.get("focus_seconds", 0)), "時間"),
+                    (
+                        text("pomodoros", language),
+                        f'{snap.get("completed_pomodoros", 0)} / {snap.get("target_pomodoros", 0)}',
+                        "番茄",
+                    ),
+                    (text("break_time", language), timer_state.format_seconds(snap.get("break_elapsed_seconds", 0)), "休息"),
+                ]
+            )
         if timer.get("saved_message"):
-            st.success(f"{text('last_status', language)}：{text(timer['saved_message'], language)}")
+            st.success(f"{text('last_status', language)}: {text(timer['saved_message'], language)}")
 
 
 def render_alarm_player() -> None:
@@ -595,13 +790,11 @@ def render_remaining_time(value: str, language: str) -> None:
 
 
 def render_status_value(phase: str, language: str) -> None:
-    color = "#22c55e" if phase in {"focus", "break"} else "inherit"
+    chip_class = phase_class(phase)
     st.markdown(
         f"""
         <div style="font-size: 0.875rem; margin-bottom: 0.25rem;">{text("status", language)}</div>
-        <div style="font-size: 2.25rem; line-height: 1.15; font-weight: 500; color: {color};">
-            {text(phase, language)}
-        </div>
+        <div class="phase-chip {chip_class}">{text(phase, language)}</div>
         """,
         unsafe_allow_html=True,
     )
@@ -612,18 +805,28 @@ def render_timer_controls(timezone: str, language: str) -> bool:
     phase = timer.get("phase")
     active = timer.get("active", False)
 
-    col1, col2, col3 = st.columns(3)
-    action_taken = False
-    if col1.button(text("pause", language), disabled=not active or phase not in {"focus", "break"}, use_container_width=True):
-        timer_state.pause_session(timezone)
-        action_taken = True
-    if col2.button(text("resume", language), disabled=not active or phase != "paused", use_container_width=True):
-        timer_state.resume_session(timezone)
-        action_taken = True
-    if col3.button(text("stop", language), disabled=not active, use_container_width=True):
-        timer_state.stop_session(timezone)
-        action_taken = True
-    return action_taken
+    with st.container(border=True):
+        st.markdown(f"<div class='subtle-card'>{text('controls', language)}</div>", unsafe_allow_html=True)
+        col1, col2, col3 = st.columns(3)
+        action_taken = False
+        if col1.button(
+            text("pause", language),
+            disabled=not active or phase not in {"focus", "break"},
+            use_container_width=True,
+        ):
+            timer_state.pause_session(timezone)
+            action_taken = True
+        if col2.button(
+            text("resume", language),
+            disabled=not active or phase != "paused",
+            use_container_width=True,
+        ):
+            timer_state.resume_session(timezone)
+            action_taken = True
+        if col3.button(text("stop", language), disabled=not active, use_container_width=True):
+            timer_state.stop_session(timezone)
+            action_taken = True
+        return action_taken
 
 
 def build_manual_schedule(
@@ -665,108 +868,121 @@ def build_auto_schedule(
 
 
 def render_start_form(timezone: str, language: str) -> None:
-    st.subheader(text("start_title", language))
+    st.markdown(f"<h2>{text('start_title', language)}</h2>", unsafe_allow_html=True)
     disabled = timer_state.is_active()
-    schedule_mode = st.radio(
-        text("schedule_mode", language),
-        SCHEDULE_MODES,
-        format_func=lambda value: option_label("mode", value, language),
-        horizontal=True,
-        disabled=disabled,
-        key="schedule_mode",
-    )
-    if schedule_mode == "manual":
-        st.caption(text("manual_mode_hint", language))
-        total_focus_minutes = st.number_input(
-            text("total_focus_minutes", language),
-            min_value=1,
-            max_value=720,
-            value=60,
-            step=5,
-            disabled=disabled,
-            key="manual_total_focus_minutes",
-        )
-        segment_focus_minutes = st.number_input(
-            text("segment_focus_minutes", language),
-            min_value=1,
-            max_value=240,
-            value=25,
-            step=5,
-            disabled=disabled,
-            key="manual_segment_focus_minutes",
-        )
-        break_minutes = st.number_input(
-            text("break_minutes", language),
-            min_value=0,
-            max_value=120,
-            value=10,
-            step=5,
-            disabled=disabled,
-            key="manual_break_minutes",
-        )
-        schedule = build_manual_schedule(int(total_focus_minutes), int(segment_focus_minutes), int(break_minutes))
-        st.caption(
-            f"{text('planned_segments', language)}: {schedule['planned_segments']}. "
-            f"{text('segmented_break_hint', language)}"
-        )
-    else:
-        st.caption(text("auto_mode_hint", language))
-        total_time_minutes = st.number_input(
-            text("total_time_minutes", language),
-            min_value=1,
-            max_value=1440,
-            value=120,
-            step=5,
-            disabled=disabled,
-            key="auto_total_time_minutes",
-        )
-        planned_segments = st.number_input(
-            text("auto_segments", language),
-            min_value=1,
-            max_value=48,
-            value=4,
-            step=1,
-            disabled=disabled,
-            key="auto_planned_segments",
-        )
-        total_break_minutes = st.number_input(
-            text("total_break_minutes", language),
-            min_value=0,
-            max_value=1440,
-            value=20,
-            step=5,
-            disabled=disabled,
-            key="auto_total_break_minutes",
-        )
-        schedule = build_auto_schedule(int(total_time_minutes), int(planned_segments), int(total_break_minutes))
-        st.caption(
-            f"{text('auto_total_focus', language)}: {timer_state.format_seconds(schedule['total_focus_seconds'])}\n\n"
-            f"{text('auto_segment_focus', language)}: {timer_state.format_seconds(schedule['segment_focus_seconds'])}\n\n"
-            f"{text('auto_break_per_gap', language)}: {timer_state.format_seconds(schedule['break_seconds'])}"
-        )
-        if schedule["actual_total_break_seconds"] < schedule["requested_total_break_seconds"]:
-            st.warning(text("auto_adjusted_break", language))
 
-    task_type = st.selectbox(
-        text("task_type", language),
-        TASK_TYPES,
-        format_func=lambda value: option_label("task", value, language),
-        disabled=disabled,
-        key="task_type_select",
-    )
-    custom_task_type = ""
-    if task_type == "other":
-        custom_task_type = st.text_input(text("custom_task_type", language), disabled=disabled)
+    with st.container(border=True):
+        st.markdown(f"<div class='subtle-card'>{text('study_plan_setup', language)}</div>", unsafe_allow_html=True)
+        schedule_mode = st.radio(
+            text("schedule_mode", language),
+            SCHEDULE_MODES,
+            format_func=lambda value: option_label("mode", value, language),
+            horizontal=True,
+            disabled=disabled,
+            key="schedule_mode",
+        )
+        if schedule_mode == "manual":
+            st.caption(text("manual_mode_hint", language))
+            total_focus_minutes = st.number_input(
+                text("total_focus_minutes", language),
+                min_value=1,
+                max_value=720,
+                value=60,
+                step=5,
+                disabled=disabled,
+                key="manual_total_focus_minutes",
+            )
+            segment_focus_minutes = st.number_input(
+                text("segment_focus_minutes", language),
+                min_value=1,
+                max_value=240,
+                value=25,
+                step=5,
+                disabled=disabled,
+                key="manual_segment_focus_minutes",
+            )
+            break_minutes = st.number_input(
+                text("break_minutes", language),
+                min_value=0,
+                max_value=120,
+                value=10,
+                step=5,
+                disabled=disabled,
+                key="manual_break_minutes",
+            )
+            schedule = build_manual_schedule(
+                int(total_focus_minutes),
+                int(segment_focus_minutes),
+                int(break_minutes),
+            )
+            st.caption(
+                f"{text('planned_segments', language)}: {schedule['planned_segments']}. "
+                f"{text('segmented_break_hint', language)}"
+            )
+        else:
+            st.caption(text("auto_mode_hint", language))
+            total_time_minutes = st.number_input(
+                text("total_time_minutes", language),
+                min_value=1,
+                max_value=1440,
+                value=120,
+                step=5,
+                disabled=disabled,
+                key="auto_total_time_minutes",
+            )
+            planned_segments = st.number_input(
+                text("auto_segments", language),
+                min_value=1,
+                max_value=48,
+                value=4,
+                step=1,
+                disabled=disabled,
+                key="auto_planned_segments",
+            )
+            total_break_minutes = st.number_input(
+                text("total_break_minutes", language),
+                min_value=0,
+                max_value=1440,
+                value=20,
+                step=5,
+                disabled=disabled,
+                key="auto_total_break_minutes",
+            )
+            schedule = build_auto_schedule(
+                int(total_time_minutes),
+                int(planned_segments),
+                int(total_break_minutes),
+            )
+            st.caption(
+                f"{text('auto_total_focus', language)}: {timer_state.format_seconds(schedule['total_focus_seconds'])}\n\n"
+                f"{text('auto_segment_focus', language)}: {timer_state.format_seconds(schedule['segment_focus_seconds'])}\n\n"
+                f"{text('auto_break_per_gap', language)}: {timer_state.format_seconds(schedule['break_seconds'])}"
+            )
+            if schedule["actual_total_break_seconds"] < schedule["requested_total_break_seconds"]:
+                st.warning(text("auto_adjusted_break", language))
 
-    with st.form("start_session_form", clear_on_submit=False):
-        subject_col, book_col = st.columns(2)
-        with subject_col:
-            subject = st.text_input(text("subject", language), disabled=disabled)
-        with book_col:
-            book_or_course = st.text_input(text("book_or_course", language), disabled=disabled)
-        chapter = st.text_input(text("chapter", language), disabled=disabled)
-        plan_note = st.text_area(text("plan_note", language), disabled=disabled)
-        submitted = st.form_submit_button(text("start", language), disabled=disabled)
+    with st.container(border=True):
+        st.markdown(f"<div class='subtle-card'>{text('task_information', language)}</div>", unsafe_allow_html=True)
+        task_type = st.selectbox(
+            text("task_type", language),
+            TASK_TYPES,
+            format_func=lambda value: option_label("task", value, language),
+            disabled=disabled,
+            key="task_type_select",
+        )
+        custom_task_type = ""
+        if task_type == "other":
+            custom_task_type = st.text_input(text("custom_task_type", language), disabled=disabled)
+
+        with st.form("start_session_form", clear_on_submit=False):
+            subject_col, book_col = st.columns(2)
+            with subject_col:
+                subject = st.text_input(text("subject", language), disabled=disabled)
+            with book_col:
+                book_or_course = st.text_input(text("book_or_course", language), disabled=disabled)
+            chapter = st.text_input(text("chapter", language), disabled=disabled)
+            plan_note = st.text_area(text("plan_note", language), disabled=disabled)
+            submitted = st.form_submit_button(text("start", language), disabled=disabled, use_container_width=True)
 
     if submitted:
         saved_task_type = custom_task_type.strip() if task_type == "other" and custom_task_type.strip() else task_type
@@ -796,21 +1012,34 @@ def render_today_page(db: SheetsDB, timezone: str, language: str) -> None:
     df = db.get_study_sessions_df()
     summary = analytics.today_summary(df, today)
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric(text("today_focus_minutes", language), summary["focus_minutes"])
-    col2.metric(text("today_study_hours", language), summary["study_hours"])
-    col3.metric(text("today_pomodoros", language), summary["pomodoros"])
+    st.markdown(f"<h2>{text('page_today', language)}</h2>", unsafe_allow_html=True)
 
+    with st.container(border=True):
+        st.markdown(f"<div class='subtle-card'>{text('summary', language)}</div>", unsafe_allow_html=True)
+        render_metric_cards(
+            [
+                (text("today_focus_minutes", language), str(summary["focus_minutes"]), "專注"),
+                (text("today_study_hours", language), str(summary["study_hours"]), "時數"),
+                (text("today_pomodoros", language), str(summary["pomodoros"]), "番茄"),
+            ]
+        )
+
+    st.markdown("<div class='subtle-card'>", unsafe_allow_html=True)
     st.subheader(text("today_subject_hours", language))
     st.dataframe(display_df(summary["subject_hours"], language), use_container_width=True, hide_index=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
+    st.markdown("<div class='subtle-card'>", unsafe_allow_html=True)
     st.subheader(text("today_records", language))
     records = summary["records"]
     st.dataframe(display_df(records, language), use_container_width=True, hide_index=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if records.empty:
+        st.info(text("no_records_today", language))
         return
 
+    st.markdown("<div class='subtle-card'>", unsafe_allow_html=True)
     st.subheader(text("edit_record", language))
     labels = records.apply(
         lambda row: f"{row['start_time']} | {row['subject']} | {row['book_or_course']} | {row['status']} | {row['id']}",
@@ -825,6 +1054,7 @@ def render_today_page(db: SheetsDB, timezone: str, language: str) -> None:
         stuck = st.text_area(text("stuck", language), value=str(selected_row.get("stuck", "")))
         next_action = st.text_area(text("next_action", language), value=str(selected_row.get("next_action", "")))
         submitted = st.form_submit_button(text("save_changes", language))
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if submitted:
         db.update_session_fields(
@@ -846,48 +1076,64 @@ def render_stats_page(db: SheetsDB, timezone: str, language: str) -> None:
     df = db.get_study_sessions_df()
     summary = analytics.cumulative_summary(df, today)
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric(text("total_hours", language), summary["total_hours"])
-    col2.metric(text("total_pomodoros", language), summary["total_pomodoros"])
-    col3.metric(text("avg_7", language), summary["average_7_days"])
-    col4.metric(text("avg_30", language), summary["average_30_days"])
+    st.markdown(f"<h2>{text('page_stats', language)}</h2>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown(f"<div class='subtle-card'>{text('overall_progress', language)}</div>", unsafe_allow_html=True)
+        render_metric_cards(
+            [
+                (text("total_hours", language), str(summary["total_hours"]), "時數"),
+                (text("total_pomodoros", language), str(summary["total_pomodoros"]), "番茄"),
+                (text("avg_7", language), str(summary["average_7_days"]), "週均"),
+                (text("avg_30", language), str(summary["average_30_days"]), "月均"),
+            ]
+        )
 
     col_left, col_right = st.columns(2)
     with col_left:
-        st.subheader(text("subject_hours", language))
-        st.dataframe(display_df(summary["subject_hours"], language), use_container_width=True, hide_index=True)
+        with st.container(border=True):
+            st.subheader(text("subject_hours", language))
+            st.dataframe(display_df(summary["subject_hours"], language), use_container_width=True, hide_index=True)
     with col_right:
-        st.subheader(text("task_type_hours", language))
-        st.dataframe(display_df(summary["task_type_hours"], language), use_container_width=True, hide_index=True)
+        with st.container(border=True):
+            st.subheader(text("task_type_hours", language))
+            st.dataframe(display_df(summary["task_type_hours"], language), use_container_width=True, hide_index=True)
 
-    st.subheader(text("daily_line", language))
-    st.pyplot(
-        analytics.daily_hours_figure(
-            summary["daily_hours"],
-            title=text("chart_title", language),
-            x_label=text("chart_x", language),
-            y_label=text("chart_y", language),
-            empty_label=text("chart_empty", language),
+    with st.container(border=True):
+        st.subheader(text("daily_line", language))
+        st.pyplot(
+            analytics.daily_hours_figure(
+                summary["daily_hours"],
+                title=text("chart_title", language),
+                x_label=text("chart_x", language),
+                y_label=text("chart_y", language),
+                empty_label=text("chart_empty", language),
+            )
         )
-    )
 
-    st.subheader(text("weekly_table", language))
-    st.dataframe(display_df(summary["weekly_hours"], language), use_container_width=True, hide_index=True)
+    with st.container(border=True):
+        st.subheader(text("weekly_table", language))
+        st.dataframe(display_df(summary["weekly_hours"], language), use_container_width=True, hide_index=True)
 
 
 def render_search_page(db: SheetsDB, language: str) -> None:
     drain_pending_writes(db, language)
     df = db.get_study_sessions_df()
 
+    st.markdown(f"<h2>{text('page_search', language)}</h2>", unsafe_allow_html=True)
+
     filters = {}
-    rows = [st.columns(4), st.columns(4)]
-    for index, field in enumerate(SEARCH_FIELDS):
-        with rows[index // 4][index % 4]:
-            filters[field] = st.text_input(COLUMN_LABELS.get(language, {}).get(field, field))
+    with st.expander(text("filters", language), expanded=True):
+        rows = [st.columns(4), st.columns(4)]
+        for index, field in enumerate(SEARCH_FIELDS):
+            with rows[index // 4][index % 4]:
+                filters[field] = st.text_input(COLUMN_LABELS.get(language, {}).get(field, field))
 
     results = analytics.search_sessions(df, filters)
-    st.metric(text("search_results", language), len(results))
-    st.dataframe(display_df(results, language), use_container_width=True, hide_index=True)
+    with st.container(border=True):
+        st.markdown("<div class='subtle-card'>", unsafe_allow_html=True)
+        st.metric(text("search_results", language), len(results))
+        st.dataframe(display_df(results, language), use_container_width=True, hide_index=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_export_page(db: SheetsDB, timezone: str, language: str) -> None:
@@ -897,37 +1143,40 @@ def render_export_page(db: SheetsDB, timezone: str, language: str) -> None:
     weekly = analytics.weekly_hours(analytics.counted_sessions(df))
     subject_stats = analytics.cumulative_summary(df, today)["subject_hours"]
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.download_button(
-            text("all_records_csv", language),
-            data=export.all_records_csv(df),
-            file_name="study_sessions_all.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-        st.download_button(
-            text("today_records_csv", language),
-            data=export.today_records_csv(df, today),
-            file_name=f"study_sessions_{today}.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-    with col2:
-        st.download_button(
-            text("weekly_summary_csv", language),
-            data=export.csv_bytes(weekly),
-            file_name="weekly_summary.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-        st.download_button(
-            text("subject_stats_csv", language),
-            data=export.csv_bytes(subject_stats),
-            file_name="subject_stats.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
+    st.markdown(f"<h2>{text('page_export', language)}</h2>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown(f"<div class='subtle-card'>{text('csv_export', language)}</div>", unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.download_button(
+                text("all_records_csv", language),
+                data=export.all_records_csv(df),
+                file_name="study_sessions_all.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+            st.download_button(
+                text("today_records_csv", language),
+                data=export.today_records_csv(df, today),
+                file_name=f"study_sessions_{today}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        with col2:
+            st.download_button(
+                text("weekly_summary_csv", language),
+                data=export.csv_bytes(weekly),
+                file_name="weekly_summary.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+            st.download_button(
+                text("subject_stats_csv", language),
+                data=export.csv_bytes(subject_stats),
+                file_name="subject_stats.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
 
 
 def display_df(df: pd.DataFrame, language: str) -> pd.DataFrame:
@@ -950,3 +1199,8 @@ def display_df(df: pd.DataFrame, language: str) -> pd.DataFrame:
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
