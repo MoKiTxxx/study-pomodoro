@@ -1,40 +1,127 @@
 # 讀書番茄鐘紀錄系統
 
-Python + Streamlit 製作的讀書番茄鐘紀錄系統，資料儲存在 Google Sheets，並用 pandas 統計、matplotlib 畫圖。專案可上傳 GitHub，也可部署到 Streamlit Community Cloud。
+這是一個用 **Python + Streamlit** 做的讀書番茄鐘網頁系統。它可以記錄每次讀書工作階段，把資料寫入 **Google Sheets**，並用 **pandas** 與 **matplotlib** 做今日紀錄、累積統計、搜尋和 CSV 匯出。
 
-## 可以在網頁使用
+專案已設計成可以上傳到 GitHub，並部署到 Streamlit Community Cloud。機密資料不寫在程式碼中，改由 Streamlit Secrets 或環境變數提供。
 
-可以。這不是只能在本機跑的工具。
+## 專案在做什麼
 
-推薦部署方式是：
+這個系統的目標是幫你把「讀書時間」轉成可以追蹤、回顧、統計的資料。
 
-1. 專案上傳 GitHub。
-2. 到 Streamlit Community Cloud 建立 App。
-3. 在 Streamlit Cloud 的 Secrets 設定 passcode、Google Sheet ID、Google service account JSON。
-4. 部署後用 Streamlit Cloud 提供的網址登入使用。
+你可以在開始讀書前填入：
 
-最短部署步驟請看 [DEPLOY.md](DEPLOY.md)。
+- 任務類型
+- 科目
+- 書本或課程
+- 章節
+- 開始前備註
+- 計時模式與休息安排
 
-## 功能
+讀書時系統會：
 
-- Passcode 保護
-- 開始、暫停、繼續、停止、手動完成、儲存部分讀書紀錄
-- 使用 timestamp + `st.session_state` 計時，不使用 `while True`
-- Pause 不計入專注時間，Break 不計入讀書時間
-- 完成番茄鐘自動寫入 Google Sheets
-- 今日紀錄、累積統計、搜尋、CSV 匯出
-- worksheet 或表頭不存在時會自動建立
-- 統計只計入 `completed` 與 `saved_partial`
+- 倒數每段專注時間
+- 自動安排休息時間
+- 暫停時不計入專注時間
+- 休息時間不計入讀書時間
+- 每段專注結束時播放 `Alarm.mp3`
+- 完成後寫入 Google Sheets
+
+之後你可以查看：
+
+- 今日總專注時間
+- 今日番茄鐘數
+- 今日各科時數
+- 累積總時數
+- 每週統計
+- 最近 7 日與 30 日平均
+- 每日讀書時數折線圖
+- 搜尋歷史紀錄
+- 匯出 CSV
+
+## 主要功能
+
+- Passcode 登入保護
+- 中文 / 英文 UI
+- 手動分段模式
+- 自動模式：輸入總時間、分段數、總休息時間，自動換算每段專注與休息時間
+- Start / Pause / Resume / Stop work
+- 完成番茄鐘後自動寫入 Google Sheets
+- Google Sheets worksheet 和表頭不存在時自動建立
+- 空資料表不報錯
+- 今日紀錄可補填：
+  - output
+  - stuck
+  - next_action
+- 累積統計全部從 Google Sheets 重新計算，不手動儲存累積值
+- CSV 匯出：
+  - 全部紀錄
+  - 今日紀錄
+  - 每週摘要
+  - 各科統計
+
+## 技術
+
+- Python
+- Streamlit
+- Google Sheets API
+- gspread
+- pandas
+- matplotlib
+- streamlit-autorefresh
+
+## 專案檔案
+
+```text
+app.py
+auth.py
+config.py
+sheets_db.py
+timer_state.py
+analytics.py
+export.py
+requirements.txt
+runtime.txt
+DEPLOY.md
+README.md
+.gitignore
+.streamlit/secrets.toml.example
+Alarm.mp3
+```
+
+## Google Sheets 資料表
+
+系統會使用兩個 worksheet：
+
+```text
+study_sessions
+pomodoro_events
+```
+
+### study_sessions 欄位
+
+```text
+id, date, start_time, end_time, subject, book_or_course, chapter, task_type, proof_status, plan_note, focus_minutes, break_minutes, completed_pomodoros, pomodoro_minutes, status, output, stuck, next_action, created_at, updated_at
+```
+
+### pomodoro_events 欄位
+
+```text
+id, session_id, date, start_time, end_time, focus_minutes, status, created_at
+```
+
+統計主要計入 `completed`。舊版本保留的 `saved_partial` 資料也會被統計，以維持相容性。`stopped` 不計入統計。
 
 ## 安裝
 
-```bash
+Windows PowerShell：
+
+```powershell
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-macOS 或 Linux：
+macOS / Linux：
 
 ```bash
 python3 -m venv .venv
@@ -44,59 +131,50 @@ pip install -r requirements.txt
 
 ## 建立 Google Sheet
 
-1. 到 [Google Sheets](https://sheets.google.com/) 建立一份新的試算表。
+1. 到 Google Sheets 建立一份新的試算表。
 2. 從網址取得 Sheet ID。
-   - 網址格式通常是 `https://docs.google.com/spreadsheets/d/<GOOGLE_SHEET_ID>/edit`
-3. 不需要手動建立 worksheet。程式會自動建立：
-   - `study_sessions`
-   - `pomodoro_events`
 
-`study_sessions` 欄位：
+網址格式通常像這樣：
 
 ```text
-id, date, start_time, end_time, subject, book_or_course, chapter, task_type, proof_status, plan_note, focus_minutes, break_minutes, completed_pomodoros, pomodoro_minutes, status, output, stuck, next_action, created_at, updated_at
+https://docs.google.com/spreadsheets/d/<GOOGLE_SHEET_ID>/edit
 ```
 
-`pomodoro_events` 欄位：
+`<GOOGLE_SHEET_ID>` 就是要放進 secrets 的值。
 
-```text
-id, session_id, date, start_time, end_time, focus_minutes, status, created_at
-```
+你不需要手動建立 `study_sessions` 和 `pomodoro_events`，程式會自動建立。
 
-## 建立 Google service account
+## 建立 Google Service Account
 
-1. 到 [Google Cloud Console](https://console.cloud.google.com/) 建立或選擇一個 project。
-2. 啟用 Google Sheets API。
-3. 啟用 Google Drive API。
-4. 進入 IAM & Admin > Service Accounts。
-5. 建立 service account。
-6. 到該 service account 的 Keys 頁面，新增 JSON key。
-7. 下載 JSON key 檔案。
+1. 到 Google Cloud Console。
+2. 建立或選擇一個 project。
+3. 啟用 Google Sheets API。
+4. 啟用 Google Drive API。
+5. 進入 IAM & Admin > Service Accounts。
+6. 建立 service account。
+7. 到該 service account 的 Keys 頁面。
+8. 新增 JSON key 並下載。
 
-## 分享 Sheet 給 service account
+下載的 JSON key 不要上傳 GitHub。
 
-1. 打開剛建立的 Google Sheet。
+## 分享 Google Sheet
+
+1. 打開你的 Google Sheet。
 2. 點右上角「共用」。
-3. 將 JSON key 裡的 `client_email` 加入分享對象。
-4. 權限設定為「編輯者」。
+3. 從 service account JSON 裡找到 `client_email`。
+4. 把這個 email 加入 Sheet 共用名單。
+5. 權限設成 Editor / 編輯者。
 
-## 設定 secrets
+## 設定 Secrets
 
-建立本機 secrets 檔案：
+本機建立：
 
-```bash
+```powershell
 mkdir .streamlit
 copy .streamlit\secrets.toml.example .streamlit\secrets.toml
 ```
 
-macOS 或 Linux：
-
-```bash
-mkdir -p .streamlit
-cp .streamlit/secrets.toml.example .streamlit/secrets.toml
-```
-
-編輯 `.streamlit/secrets.toml`：
+`.streamlit/secrets.toml` 範例：
 
 ```toml
 APP_PASSCODE = "your-passcode"
@@ -116,62 +194,68 @@ auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
 client_x509_cert_url = "..."
 ```
 
-也可以用環境變數：
+真正的 `.streamlit/secrets.toml` 不要 commit。
 
-```bash
-set APP_PASSCODE=your-passcode
-set GOOGLE_SHEET_ID=your-google-sheet-id
-set GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
-```
-
-PowerShell：
+## 本機執行
 
 ```powershell
-$env:APP_PASSCODE="your-passcode"
-$env:GOOGLE_SHEET_ID="your-google-sheet-id"
-$env:GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
-```
-
-## 本地執行
-
-```bash
 streamlit run app.py
 ```
 
-瀏覽器開啟 Streamlit 顯示的網址，輸入 `APP_PASSCODE` 後即可使用。
+瀏覽器會開啟：
 
-## 上傳 GitHub
-
-```bash
-git init
-git add .
-git commit -m "Initial study pomodoro tracker"
-git branch -M main
-git remote add origin https://github.com/<your-user>/<your-repo>.git
-git push -u origin main
+```text
+http://localhost:8501
 ```
 
-`.gitignore` 已排除：
-
-- `.env`
-- `.streamlit/secrets.toml`
-- `__pycache__/`
-- `.venv/`
-- `venv/`
-- `*.csv`
+輸入 `APP_PASSCODE` 後即可使用。
 
 ## 部署到 Streamlit Community Cloud
 
-1. 將專案 push 到 GitHub。
-2. 到 [Streamlit Community Cloud](https://streamlit.io/cloud)。
-3. 建立 New app。
-4. 選擇 GitHub repo、branch 與 `app.py`。
-5. 到 App settings > Secrets，貼上 `.streamlit/secrets.toml` 的內容。
-6. Deploy。
+1. 把專案 push 到 GitHub。
+2. 到 Streamlit Community Cloud 建立 app。
+3. Repository 選這個專案。
+4. Branch 選 `main`。
+5. Main file path 填：
 
-部署後請確認：
+```text
+app.py
+```
 
-- Google Sheet 已分享給 service account email。
-- `GOOGLE_SHEET_ID` 正確。
-- `APP_PASSCODE` 已設定。
-- service account JSON 的 `private_key` 保留 `\n` 換行。
+6. Advanced settings 裡的 Secrets 貼上 `.streamlit/secrets.toml` 的內容。
+7. Deploy。
+
+注意：Streamlit Cloud 的 Secrets 欄位要貼 TOML 內容，不是貼 `.streamlit/secrets.toml` 這個路徑。
+
+## 安全注意事項
+
+`.gitignore` 會排除：
+
+```text
+.env
+.streamlit/secrets.toml
+*.json
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.csv
+exports/
+*.db
+*.sqlite
+*.sqlite3
+```
+
+不要把以下檔案上傳到 GitHub：
+
+- `.streamlit/secrets.toml`
+- Google service account JSON key
+- `.env`
+
+## 線上版本
+
+目前部署網址：
+
+```text
+https://study-pomodoro-c6fojvylxscymcgpvbqogz.streamlit.app/
+```
