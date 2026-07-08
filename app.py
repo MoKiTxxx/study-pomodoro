@@ -419,9 +419,9 @@ I18N["zh"].update(
         "planned_segments": "預計專注段數",
         "segmented_break_hint": "系統會在每段專注之間自動加入休息；最後一段可能較短。",
         "schedule_mode": "計時模式",
-        "mode_manual": "手動分段",
+        "mode_manual": "固定專注段長",
         "mode_auto": "自動模式",
-        "manual_mode_hint": "手動設定總專注時間、每段專注時間與每段休息時間。",
+        "manual_mode_hint": "設定總時間、專注段數與每段專注時間；系統會自動平均計算每次休息時間。",
         "auto_mode_hint": "自動模式會用總時間扣掉段間休息，再把剩餘專注時間平均分成 n 段。",
         "total_time_minutes": "總時間（分鐘，含休息）",
         "auto_segments": "分成幾段專注",
@@ -431,6 +431,7 @@ I18N["zh"].update(
         "auto_break_per_gap": "自動算出每次休息時間",
         "auto_adjusted_break": "總時間不足以放入原本的休息時間，已自動縮短休息。",
         "auto_actual_break": "實際每段休息時間",
+        "fixed_focus_adjusted": "總時間不足以放入設定的專注段，已取消休息並縮短最後一段。",
     }
 )
 COLUMN_LABELS = {
@@ -471,9 +472,9 @@ I18N["zh"].update(
         "planned_segments": "預計專注段數",
         "segmented_break_hint": "系統會在每段專注之間自動加入休息；最後一段可能較短。",
         "schedule_mode": "計時模式",
-        "mode_manual": "手動分段",
+        "mode_manual": "固定專注段長",
         "mode_auto": "自動模式",
-        "manual_mode_hint": "手動設定總專注時間、每段專注時間與每段休息時間。",
+        "manual_mode_hint": "設定總時間、專注段數與每段專注時間；系統會自動平均計算每次休息時間。",
         "auto_mode_hint": "自動模式會用總時間扣掉段間休息，再把剩餘專注時間平均分成 n 段。",
         "total_time_minutes": "總時間（分鐘，含休息）",
         "auto_segments": "分成幾段專注",
@@ -483,6 +484,7 @@ I18N["zh"].update(
         "auto_break_per_gap": "自動算出每次休息時間",
         "auto_adjusted_break": "總時間不足以放入原本的休息時間，已自動縮短休息。",
         "auto_actual_break": "實際每段休息時間",
+        "fixed_focus_adjusted": "總時間不足以放入設定的專注段，已取消休息並縮短最後一段。",
     }
 )
 I18N["en"].update(
@@ -493,9 +495,9 @@ I18N["en"].update(
         "planned_segments": "Planned focus segments",
         "segmented_break_hint": "Breaks are inserted between focus segments automatically; the final segment may be shorter.",
         "schedule_mode": "Timer mode",
-        "mode_manual": "Manual segments",
+        "mode_manual": "Fixed focus length",
         "mode_auto": "Auto mode",
-        "manual_mode_hint": "Set total focus time, focus time per segment, and break time per segment manually.",
+        "manual_mode_hint": "Set total time, number of focus segments, and focus time per segment; break time per gap is calculated automatically.",
         "auto_mode_hint": "Auto mode subtracts breaks from total time, then splits the remaining focus time evenly into n segments.",
         "total_time_minutes": "Total minutes, including breaks",
         "auto_segments": "Number of focus segments",
@@ -505,6 +507,7 @@ I18N["en"].update(
         "auto_break_per_gap": "Calculated break time per gap",
         "auto_adjusted_break": "Total time is too short for the requested breaks, so breaks were shortened automatically.",
         "auto_actual_break": "Actual break time per segment",
+        "fixed_focus_adjusted": "Total time is too short for the requested focus segments, so breaks were removed and the final segment was shortened.",
     }
 )
 
@@ -516,11 +519,16 @@ I18N["zh"].update(
         "date_range_swapped": "開始日期晚於結束日期，已自動交換日期區間。",
         "range_chart_title": "日期區間內每日累積專注時間",
         "edit_search_record": "修改搜尋結果紀錄",
-        "delete_record": "刪除紀錄",
-        "delete_record_warning": "刪除後會移除這筆 study_sessions，也會移除對應的 pomodoro_events。",
-        "confirm_delete": "我確認要刪除這筆紀錄",
+        "delete_record": "刪除已勾選紀錄",
+        "delete_record_warning": "刪除後會移除已勾選的 study_sessions，也會移除對應的 pomodoro_events。",
+        "confirm_delete": "我確認要刪除已勾選的紀錄",
         "confirm_delete_first": "請先勾選確認刪除。",
         "deleted": "紀錄已刪除。",
+        "select_delete_column": "刪除",
+        "select_records_to_delete": "勾選要刪除的紀錄",
+        "selected_delete_count": "已勾選 {count} 筆",
+        "no_records_selected": "請先勾選至少一筆紀錄。",
+        "deleted_count": "已刪除 {count} 筆紀錄。",
     }
 )
 I18N["en"].update(
@@ -531,11 +539,16 @@ I18N["en"].update(
         "date_range_swapped": "Start date is later than end date, so the range was swapped automatically.",
         "range_chart_title": "Daily accumulated focus time in selected range",
         "edit_search_record": "Edit search result record",
-        "delete_record": "Delete record",
-        "delete_record_warning": "Deleting removes this study_sessions row and its matching pomodoro_events.",
-        "confirm_delete": "I confirm deleting this record",
+        "delete_record": "Delete selected records",
+        "delete_record_warning": "Deleting removes selected study_sessions rows and their matching pomodoro_events.",
+        "confirm_delete": "I confirm deleting the selected records",
         "confirm_delete_first": "Please check the confirmation box first.",
         "deleted": "Record deleted.",
+        "select_delete_column": "Delete",
+        "select_records_to_delete": "Select records to delete",
+        "selected_delete_count": "{count} selected",
+        "no_records_selected": "Select at least one record first.",
+        "deleted_count": "Deleted {count} records.",
     }
 )
 
@@ -1240,18 +1253,32 @@ def render_timer_controls(timezone: str, language: str) -> bool:
         return action_taken
 
 
-def build_manual_schedule(
-    total_focus_minutes: int,
+def build_fixed_focus_schedule(
+    total_time_minutes: int,
+    planned_segments: int,
     segment_focus_minutes: int,
-    break_minutes: int,
-) -> dict[str, float | int]:
-    segment_focus_minutes = max(1, int(segment_focus_minutes))
-    total_focus_minutes = max(1, int(total_focus_minutes))
+) -> dict[str, float | int | bool]:
+    total_seconds = max(1, int(total_time_minutes)) * 60
+    requested_segments = max(1, int(planned_segments))
+    segment_focus_seconds = max(1, int(segment_focus_minutes)) * 60
+    requested_total_focus_seconds = requested_segments * segment_focus_seconds
+    total_focus_seconds = min(total_seconds, requested_total_focus_seconds)
+    actual_segments = max(
+        1,
+        min(
+            requested_segments,
+            (int(total_focus_seconds) + int(segment_focus_seconds) - 1) // int(segment_focus_seconds),
+        ),
+    )
+    break_count = max(0, actual_segments - 1)
+    break_seconds = max(0.0, (total_seconds - total_focus_seconds) / break_count) if break_count else 0.0
     return {
-        "planned_segments": (total_focus_minutes + segment_focus_minutes - 1) // segment_focus_minutes,
-        "total_focus_seconds": total_focus_minutes * 60,
-        "segment_focus_seconds": segment_focus_minutes * 60,
-        "break_seconds": max(0, int(break_minutes)) * 60,
+        "planned_segments": actual_segments,
+        "total_focus_seconds": total_focus_seconds,
+        "segment_focus_seconds": segment_focus_seconds,
+        "break_seconds": break_seconds,
+        "requested_total_focus_seconds": requested_total_focus_seconds,
+        "focus_was_shortened": total_focus_seconds < requested_total_focus_seconds,
     }
 
 
@@ -1296,14 +1323,23 @@ def render_start_form(timezone: str, language: str) -> None:
         )
         if schedule_mode == "manual":
             st.caption(text("manual_mode_hint", language))
-            total_focus_minutes = st.number_input(
-                text("total_focus_minutes", language),
+            total_time_minutes = st.number_input(
+                text("total_time_minutes", language),
                 min_value=1,
-                max_value=720,
-                value=60,
+                max_value=1440,
+                value=120,
                 step=5,
                 disabled=disabled,
-                key="manual_total_focus_minutes",
+                key="fixed_total_time_minutes",
+            )
+            planned_segments = st.number_input(
+                text("auto_segments", language),
+                min_value=1,
+                max_value=48,
+                value=4,
+                step=1,
+                disabled=disabled,
+                key="fixed_planned_segments",
             )
             segment_focus_minutes = st.number_input(
                 text("segment_focus_minutes", language),
@@ -1312,26 +1348,20 @@ def render_start_form(timezone: str, language: str) -> None:
                 value=25,
                 step=5,
                 disabled=disabled,
-                key="manual_segment_focus_minutes",
+                key="fixed_segment_focus_minutes",
             )
-            break_minutes = st.number_input(
-                text("break_minutes", language),
-                min_value=0,
-                max_value=120,
-                value=10,
-                step=5,
-                disabled=disabled,
-                key="manual_break_minutes",
-            )
-            schedule = build_manual_schedule(
-                int(total_focus_minutes),
+            schedule = build_fixed_focus_schedule(
+                int(total_time_minutes),
+                int(planned_segments),
                 int(segment_focus_minutes),
-                int(break_minutes),
             )
             st.caption(
-                f"{text('planned_segments', language)}: {schedule['planned_segments']}. "
-                f"{text('segmented_break_hint', language)}"
+                f"{text('auto_total_focus', language)}: {timer_state.format_seconds(schedule['total_focus_seconds'])}\n\n"
+                f"{text('planned_segments', language)}: {schedule['planned_segments']}\n\n"
+                f"{text('auto_break_per_gap', language)}: {timer_state.format_seconds(schedule['break_seconds'])}"
             )
+            if schedule["focus_was_shortened"]:
+                st.warning(text("fixed_focus_adjusted", language))
         else:
             st.caption(text("auto_mode_hint", language))
             total_time_minutes = st.number_input(
@@ -1550,6 +1580,60 @@ def render_stats_page(db: SheetsDB, timezone: str, language: str) -> None:
         st.dataframe(display_df(summary["weekly_hours"], language), use_container_width=True, hide_index=True)
 
 
+def render_search_delete_selector(db: SheetsDB, results: pd.DataFrame, language: str) -> None:
+    result_ids = results["id"].astype(str).tolist()
+    delete_column = text("select_delete_column", language)
+    selection_df = display_df(results.reset_index(drop=True), language)
+    selection_df.insert(0, delete_column, False)
+    disabled_columns = [column for column in selection_df.columns if column != delete_column]
+    selection_key = "search_delete_selector_" + str(len(result_ids)) + "_" + "_".join(
+        record_id[:8] for record_id in result_ids[:8]
+    )
+
+    st.subheader(text("select_records_to_delete", language))
+    edited_df = st.data_editor(
+        selection_df,
+        column_config={
+            delete_column: st.column_config.CheckboxColumn(delete_column, default=False),
+        },
+        disabled=disabled_columns,
+        hide_index=True,
+        use_container_width=True,
+        key=selection_key,
+    )
+    selected_flags = edited_df[delete_column].fillna(False).astype(bool).tolist()
+    selected_ids = [
+        record_id
+        for record_id, is_selected in zip(result_ids, selected_flags)
+        if is_selected
+    ]
+    st.caption(text("selected_delete_count", language).format(count=len(selected_ids)))
+    if selected_ids:
+        st.warning(text("delete_record_warning", language))
+
+    confirm_key = f"confirm_delete_selected_{selection_key}"
+    confirm_delete = st.checkbox(
+        text("confirm_delete", language),
+        disabled=not selected_ids,
+        key=confirm_key,
+    )
+    if st.button(
+        text("delete_record", language),
+        disabled=not selected_ids,
+        use_container_width=True,
+        key=f"delete_selected_{selection_key}",
+    ):
+        if not selected_ids:
+            st.error(text("no_records_selected", language))
+        elif not confirm_delete:
+            st.error(text("confirm_delete_first", language))
+        else:
+            for record_id in selected_ids:
+                delete_session_compat(db, record_id)
+            st.success(text("deleted_count", language).format(count=len(selected_ids)))
+            st.rerun()
+
+
 def render_search_page(db: SheetsDB, timezone: str, language: str) -> None:
     drain_pending_writes(db, language)
     df = db.get_study_sessions_df()
@@ -1567,7 +1651,8 @@ def render_search_page(db: SheetsDB, timezone: str, language: str) -> None:
     with st.container(border=True):
         st.markdown("<div class='subtle-card'>", unsafe_allow_html=True)
         st.metric(text("search_results", language), len(results))
-        st.dataframe(display_df(results, language), use_container_width=True, hide_index=True)
+        if not results.empty:
+            render_search_delete_selector(db, results, language)
         st.markdown("</div>", unsafe_allow_html=True)
 
     if results.empty:
@@ -1697,19 +1782,6 @@ def render_search_page(db: SheetsDB, timezone: str, language: str) -> None:
         )
         st.success(text("updated", language))
         st.rerun()
-
-    with st.form(f"delete_search_record_{selected_id}"):
-        st.warning(text("delete_record_warning", language))
-        confirm_delete = st.checkbox(text("confirm_delete", language))
-        delete_submitted = st.form_submit_button(text("delete_record", language), use_container_width=True)
-
-    if delete_submitted:
-        if not confirm_delete:
-            st.error(text("confirm_delete_first", language))
-        else:
-            delete_session_compat(db, selected_id)
-            st.success(text("deleted", language))
-            st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
 
