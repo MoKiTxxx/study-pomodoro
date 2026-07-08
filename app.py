@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import base64
-import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -640,9 +639,12 @@ def daily_hours_bar_figure_compat(
             empty_label=empty_label,
         )
 
+    import matplotlib
+
+    matplotlib.use("Agg", force=True)
     import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(figsize=(9, 4.5))
+    fig, ax = plt.subplots(figsize=(10, 4.8))
     if daily_df.empty:
         ax.set_title(title)
         ax.set_xlabel(x_label)
@@ -653,12 +655,18 @@ def daily_hours_bar_figure_compat(
 
     plot_df = daily_df.copy()
     plot_df["date_label"] = pd.to_datetime(plot_df["date"]).dt.strftime("%m-%d")
-    bars = ax.bar(plot_df["date_label"], plot_df["hours"], color="#0ea5e9")
-    ax.bar_label(bars, fmt="%.2g", padding=3)
-    ax.set_title(title)
+    bars = ax.bar(plot_df["date_label"], plot_df["hours"], color="#2563eb", width=0.62)
+    labels = [f"{value:.2f} h" if value > 0 else "0" for value in plot_df["hours"]]
+    ax.bar_label(bars, labels=labels, padding=4, fontsize=9)
+    max_hours = float(plot_df["hours"].max()) if not plot_df.empty else 0.0
+    ax.set_ylim(0, max(0.25, max_hours * 1.25))
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=14)
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
-    ax.grid(axis="y", alpha=0.25)
+    ax.grid(axis="y", alpha=0.2)
+    ax.set_axisbelow(True)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
     ax.tick_params(axis="x", rotation=45)
     fig.tight_layout()
     return fig
@@ -680,7 +688,7 @@ def render_metric_card(label: str, value: str, icon: str) -> None:
     st.markdown(
         f"""
         <div class="metric-card">
-          <div class="metric-label">{icon} {label}</div>
+          <div class="metric-label">{label}</div>
           <div class="metric-value">{value}</div>
         </div>
         """,
@@ -850,17 +858,7 @@ def render_start_page(db: SheetsDB, timezone: str, language: str) -> None:
         drain_pending_writes(db, language)
 
     if timer_state.is_running() and st_autorefresh:
-        refresh_paused_until = float(st.session_state.get("timer_refresh_paused_until", 0))
-        refresh_pause_ms = int(max(0, (refresh_paused_until - time.time()) * 1000))
-        if refresh_pause_ms > 0:
-            st_autorefresh(
-                interval=refresh_pause_ms + 100,
-                limit=1,
-                key=f"timer_refresh_after_alarm_{int(refresh_paused_until * 1000)}",
-            )
-        else:
-            st.session_state.pop("timer_refresh_paused_until", None)
-            st_autorefresh(interval=TIMER_REFRESH_MS, key="timer_refresh")
+        st_autorefresh(interval=TIMER_REFRESH_MS, key="timer_refresh")
 
     if timer_state.should_show_timer_panel():
         render_timer_panel(timezone, language)
@@ -942,12 +940,7 @@ def render_alarm_player() -> None:
         action_lines.append("target.__stopPomodoroAlarm && target.__stopPomodoroAlarm();")
     if pending_alarms:
         latest_alarm = pending_alarms[-1]
-        duration_ms = latest_alarm.get("duration_ms")
-        if duration_ms:
-            st.session_state["timer_refresh_paused_until"] = max(
-                float(st.session_state.get("timer_refresh_paused_until", 0)),
-                time.time() + (int(duration_ms) / 1000) + 0.35,
-            )
+        duration_ms = latest_alarm.get("duration_ms") or SHORT_ALARM_DURATION_MS
         action_lines.append(
             f"target.__playPomodoroAlarm && target.__playPomodoroAlarm({token}, {json.dumps(duration_ms)});"
         )
@@ -1095,7 +1088,12 @@ def render_alarm_player() -> None:
                         target.__stopPomodoroAlarm(alarmToken);
                     }
                 };
-                source.start(0, 0);
+                const durationMs = normalizedDurationMs(maxDurationMs);
+                if (durationMs) {
+                    source.start(0, 0, durationMs / 1000);
+                } else {
+                    source.start(0, 0);
+                }
                 scheduleAlarmStop(alarmToken, maxDurationMs);
             } catch (error) {
                 target.__pomodoroAlarmLastError = String(error);
@@ -1493,13 +1491,17 @@ def render_stats_page(db: SheetsDB, timezone: str, language: str) -> None:
             st.warning(text("date_range_swapped", language))
             start_date, end_date = end_date, start_date
         range_daily_hours = daily_hours_between_compat(summary["counted"], start_date, end_date)
+        chart_title = "Daily Focus Time by Date"
+        chart_x_label = "Date"
+        chart_y_label = "Focus hours (h)"
+        chart_empty_label = "No data in selected range"
         st.pyplot(
             daily_hours_bar_figure_compat(
                 range_daily_hours,
-                title=text("range_chart_title", language),
-                x_label=text("chart_x", language),
-                y_label=text("chart_y", language),
-                empty_label=text("chart_empty", language),
+                title=chart_title,
+                x_label=chart_x_label,
+                y_label=chart_y_label,
+                empty_label=chart_empty_label,
             )
         )
 

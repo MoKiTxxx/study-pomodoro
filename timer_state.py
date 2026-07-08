@@ -12,7 +12,7 @@ import streamlit as st
 TIMER_KEY = "timer"
 ACTIVE_PHASES = {"focus", "break"}
 VISIBLE_INACTIVE_PHASES = {"completed", "saved_partial", "stopped", "paused"}
-BREAK_END_ALARM_DURATION_MS = 5000
+ALARM_DURATION_MS = 5000
 
 
 def _empty_timer_state() -> dict[str, Any]:
@@ -202,7 +202,7 @@ def advance_timer(timezone: str) -> None:
             event_focus_seconds = float(timer["current_focus_seconds"]) + needed
             timer["total_focus_seconds"] += needed
             timer["completed_pomodoros"] += 1
-            _queue_alarm(timer, duration_ms=None)
+            _queue_alarm(timer, duration_ms=ALARM_DURATION_MS)
             timer["pending_pomodoro_events"].append(
                 {
                     "id": str(uuid.uuid4()),
@@ -238,7 +238,7 @@ def advance_timer(timezone: str) -> None:
                 break_ended_at = _dt(timer["phase_started_at"]) + timedelta(seconds=needed)
                 timer["total_break_seconds"] += needed
 
-            _queue_alarm(timer, duration_ms=BREAK_END_ALARM_DURATION_MS)
+            _queue_alarm(timer, duration_ms=ALARM_DURATION_MS)
             timer["phase"] = "focus"
             timer["phase_started_at"] = _iso(break_ended_at)
             timer["focus_started_at"] = _iso(break_ended_at)
@@ -405,7 +405,7 @@ def consume_pending_alarms() -> list[dict[str, Any]]:
     pending = list(timer.get("pending_alarms") or [])
     legacy_count = int(timer.get("pending_alarm_count", 0))
     if not pending and legacy_count > 0:
-        pending = [{"duration_ms": None} for _ in range(legacy_count)]
+        pending = [{"duration_ms": ALARM_DURATION_MS} for _ in range(legacy_count)]
     timer["pending_alarm_count"] = 0
     timer["pending_alarms"] = []
     return pending

@@ -7,6 +7,9 @@ from typing import Any
 
 os.environ.setdefault("MPLCONFIGDIR", str(Path(__file__).resolve().parent / ".matplotlib-cache"))
 
+import matplotlib
+
+matplotlib.use("Agg", force=True)
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -232,7 +235,7 @@ def daily_hours_bar_figure(
     y_label: str = "Hours",
     empty_label: str = "No data yet",
 ):
-    fig, ax = plt.subplots(figsize=(9, 4.5))
+    fig, ax = plt.subplots(figsize=(10, 4.8))
     if daily_df.empty:
         ax.set_title(title)
         ax.set_xlabel(x_label)
@@ -243,12 +246,18 @@ def daily_hours_bar_figure(
 
     plot_df = daily_df.copy()
     plot_df["date_label"] = pd.to_datetime(plot_df["date"]).dt.strftime("%m-%d")
-    bars = ax.bar(plot_df["date_label"], plot_df["hours"], color="#0ea5e9")
-    ax.bar_label(bars, fmt="%.2g", padding=3)
-    ax.set_title(title)
+    bars = ax.bar(plot_df["date_label"], plot_df["hours"], color="#2563eb", width=0.62)
+    labels = [f"{value:.2f} h" if value > 0 else "0" for value in plot_df["hours"]]
+    ax.bar_label(bars, labels=labels, padding=4, fontsize=9)
+    max_hours = float(plot_df["hours"].max()) if not plot_df.empty else 0.0
+    ax.set_ylim(0, max(0.25, max_hours * 1.25))
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=14)
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
-    ax.grid(axis="y", alpha=0.25)
+    ax.grid(axis="y", alpha=0.2)
+    ax.set_axisbelow(True)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
     ax.tick_params(axis="x", rotation=45)
     fig.tight_layout()
     return fig
