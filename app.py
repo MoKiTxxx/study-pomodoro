@@ -23,6 +23,7 @@ from config import ConfigError, load_config, validate_runtime_config
 from sheets_db import SheetsDB
 
 ALARM_PATH = Path(__file__).with_name("Alarm.mp3")
+ALARM_DURATION_MS = 5000
 TIMER_REFRESH_MS = 500
 WRITE_AFTER_FINISH_REFRESH_MS = 600
 
@@ -658,6 +659,10 @@ def drain_pending_writes(db: SheetsDB, language: str) -> None:
         st.toast(text("synced", language))
 
 
+def request_alarm_stop() -> None:
+    st.session_state["alarm_stop_requested"] = True
+
+
 def render_start_page(db: SheetsDB, timezone: str, language: str) -> None:
     timer_state.advance_timer(timezone)
     render_alarm_player()
@@ -681,6 +686,7 @@ def render_start_page(db: SheetsDB, timezone: str, language: str) -> None:
             st.info(text("syncing", language))
         if not timer_state.is_active():
             if st.button(text("new_session", language), use_container_width=True):
+                request_alarm_stop()
                 timer_state.reset_timer_state()
                 st.rerun()
     else:
@@ -738,11 +744,52 @@ def render_timer_panel(timezone: str, language: str) -> None:
 
 def render_alarm_player() -> None:
     alarm_count = timer_state.consume_pending_alarm_count()
-    if alarm_count <= 0 or not ALARM_PATH.exists():
-        return
-
+    stop_requested = bool(st.session_state.pop("alarm_stop_requested", False))
     token = int(st.session_state.get("alarm_refresh_token", 0)) + 1
     st.session_state["alarm_refresh_token"] = token
+
+    stop_script = """
+    <script>
+    (() => {
+        const stopPomodoroAlarm = (targetWindow) => {
+            if (!targetWindow) {
+                return;
+            }
+            const stopTimer = targetWindow.__pomodoroAlarmStopTimer;
+            if (stopTimer) {
+                targetWindow.clearTimeout(stopTimer);
+                targetWindow.__pomodoroAlarmStopTimer = null;
+            }
+            const currentAudio = targetWindow.__pomodoroAlarm;
+            if (!currentAudio) {
+                return;
+            }
+            try {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+            } catch (error) {
+            }
+            if (targetWindow.__pomodoroAlarm === currentAudio) {
+                targetWindow.__pomodoroAlarm = null;
+            }
+            targetWindow.__pomodoroAlarmToken = null;
+        };
+
+        const targetWindow = window.parent || window;
+        stopPomodoroAlarm(targetWindow);
+        if (window !== targetWindow) {
+            stopPomodoroAlarm(window);
+        }
+    })();
+    </script>
+    """
+
+    if stop_requested:
+        components.html(stop_script, height=0)
+        return
+
+    if alarm_count <= 0 or not ALARM_PATH.exists():
+        return
 
     audio_data = base64.b64encode(ALARM_PATH.read_bytes()).decode("ascii")
     components.html(
@@ -751,17 +798,49 @@ def render_alarm_player() -> None:
         (() => {{
             const alarmToken = {token};
             const src = "data:audio/mpeg;base64,{audio_data}";
+            const alarmDurationMs = {ALARM_DURATION_MS};
             const play = (targetWindow) => {{
+                const stopPomodoroAlarm = (windowRef, expectedToken) => {{
+                    const stopTimer = windowRef.__pomodoroAlarmStopTimer;
+                    if (stopTimer) {{
+                        windowRef.clearTimeout(stopTimer);
+                        windowRef.__pomodoroAlarmStopTimer = null;
+                    }}
+                    const currentAudio = windowRef.__pomodoroAlarm;
+                    if (!currentAudio) {{
+                        return;
+                    }}
+                    if (expectedToken && windowRef.__pomodoroAlarmToken !== expectedToken) {{
+                        return;
+                    }}
+                    try {{
+                        currentAudio.pause();
+                        currentAudio.currentTime = 0;
+                    }} catch (error) {{
+                    }}
+                    if (windowRef.__pomodoroAlarm === currentAudio) {{
+                        windowRef.__pomodoroAlarm = null;
+                    }}
+                    windowRef.__pomodoroAlarmToken = null;
+                }};
                 const audio = new targetWindow.Audio(src);
                 audio.volume = 1;
+                stopPomodoroAlarm(targetWindow);
+                stopPomodoroAlarm(window);
                 targetWindow.__pomodoroAlarmToken = alarmToken;
                 targetWindow.__pomodoroAlarm = audio;
                 audio.addEventListener("ended", () => {{
                     if (targetWindow.__pomodoroAlarm === audio) {{
                         targetWindow.__pomodoroAlarm = null;
+                        targetWindow.__pomodoroAlarmToken = null;
                     }}
                 }});
+                audio.loop = false;
+                audio.currentTime = 0;
                 audio.play().catch(() => {{}});
+                targetWindow.__pomodoroAlarmStopTimer = targetWindow.setTimeout(() => {{
+                    stopPomodoroAlarm(targetWindow, alarmToken);
+                }}, alarmDurationMs);
             }};
 
             try {{
@@ -824,6 +903,7 @@ def render_timer_controls(timezone: str, language: str) -> bool:
             timer_state.resume_session(timezone)
             action_taken = True
         if col3.button(text("stop", language), disabled=not active, use_container_width=True):
+            request_alarm_stop()
             timer_state.stop_session(timezone)
             action_taken = True
         return action_taken
@@ -851,9 +931,11 @@ def build_auto_schedule(
 ) -> dict[str, float | int]:
     planned_segments = max(1, int(planned_segments))
     total_seconds = max(1, int(total_time_minutes)) * 60
+    max_segments_by_time = max(1, total_seconds // 60)
+    planned_segments = min(planned_segments, max_segments_by_time)
     requested_total_break_seconds = max(0, int(total_break_minutes)) * 60
     break_count = max(0, planned_segments - 1)
-    min_focus_seconds = planned_segments
+    min_focus_seconds = planned_segments * 60
     actual_total_break_seconds = min(requested_total_break_seconds, max(0, total_seconds - min_focus_seconds))
     break_seconds = actual_total_break_seconds / break_count if break_count else 0
     total_focus_seconds = max(min_focus_seconds, total_seconds - (break_seconds * break_count))
@@ -985,6 +1067,7 @@ def render_start_form(timezone: str, language: str) -> None:
             submitted = st.form_submit_button(text("start", language), disabled=disabled, use_container_width=True)
 
     if submitted:
+        request_alarm_stop()
         saved_task_type = custom_task_type.strip() if task_type == "other" and custom_task_type.strip() else task_type
         values = {
             "subject": subject.strip(),

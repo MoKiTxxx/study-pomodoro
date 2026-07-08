@@ -235,6 +235,7 @@ def advance_timer(timezone: str) -> None:
                 break_ended_at = _dt(timer["phase_started_at"]) + timedelta(seconds=needed)
                 timer["total_break_seconds"] += needed
 
+            timer["pending_alarm_count"] = int(timer.get("pending_alarm_count", 0)) + 1
             timer["phase"] = "focus"
             timer["phase_started_at"] = _iso(break_ended_at)
             timer["focus_started_at"] = _iso(break_ended_at)
@@ -249,6 +250,7 @@ def stop_session(timezone: str) -> None:
     timer = get_timer()
     if not timer.get("active"):
         return
+    timer["pending_alarm_count"] = 0
     current = _commit_active_phase_elapsed(timer, timezone)
     _finish_session(timer, "stopped", current)
 
