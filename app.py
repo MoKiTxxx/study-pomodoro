@@ -907,7 +907,6 @@ def render_timer_panel(timezone: str, language: str) -> None:
             )
     else:
         with st.container(border=True):
-            st.markdown(f"<div class='subtle-card'>{text('session_ready', language)}</div>", unsafe_allow_html=True)
             render_remaining_time("00:00:00", language)
             st.progress(0.0)
             render_metric_cards(
@@ -1175,7 +1174,6 @@ def render_timer_controls(timezone: str, language: str) -> bool:
     active = timer.get("active", False)
 
     with st.container(border=True):
-        st.markdown(f"<div class='subtle-card'>{text('controls', language)}</div>", unsafe_allow_html=True)
         col1, col2, col3 = st.columns(3)
         action_taken = False
         if col1.button(
@@ -1244,7 +1242,7 @@ def render_start_form(timezone: str, language: str) -> None:
     disabled = timer_state.is_active()
 
     with st.container(border=True):
-        st.markdown(f"<div class='subtle-card'>{text('study_plan_setup', language)}</div>", unsafe_allow_html=True)
+        st.subheader(text("study_plan_setup", language))
         schedule_mode = st.radio(
             text("schedule_mode", language),
             SCHEDULE_MODES,
@@ -1334,7 +1332,6 @@ def render_start_form(timezone: str, language: str) -> None:
                 st.warning(text("auto_adjusted_break", language))
 
     with st.container(border=True):
-        st.markdown(f"<div class='subtle-card'>{text('task_information', language)}</div>", unsafe_allow_html=True)
         task_type = st.selectbox(
             text("task_type", language),
             TASK_TYPES,
@@ -1451,7 +1448,7 @@ def render_stats_page(db: SheetsDB, timezone: str, language: str) -> None:
 
     st.markdown(f"<h2>{text('page_stats', language)}</h2>", unsafe_allow_html=True)
     with st.container(border=True):
-        st.markdown(f"<div class='subtle-card'>{text('overall_progress', language)}</div>", unsafe_allow_html=True)
+        st.subheader(text("overall_progress", language))
         render_metric_cards(
             [
                 (text("total_hours", language), str(summary["total_hours"]), "時數"),
