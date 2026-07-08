@@ -163,31 +163,33 @@ footer {
 }
 
 .metric-card {
-  border: 1px solid var(--ring);
+  border: 1px solid rgba(148, 163, 184, 0.32);
   border-radius: 14px;
-  background: #fbfdff;
+  background: rgba(148, 163, 184, 0.10);
   padding: 0.8rem;
 }
 
 .metric-label {
-  color: var(--muted);
+  color: inherit;
+  opacity: 0.72;
   font-size: 0.84rem;
   margin-bottom: 0.35rem;
 }
 
 .metric-value {
-  color: var(--text);
+  color: inherit;
   font-weight: 700;
   font-size: 1.45rem;
   line-height: 1.2;
 }
 
 .subtle-card {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 0.75rem 1rem;
-  background: #ffffff;
-  margin: 0.5rem 0 1rem;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  margin: 0.35rem 0 0.7rem;
+  color: inherit;
 }
 
 .stButton > button {
@@ -1457,32 +1459,25 @@ def render_today_page(db: SheetsDB, timezone: str, language: str) -> None:
 
     st.markdown(f"<h2>{text('page_today', language)}</h2>", unsafe_allow_html=True)
 
-    with st.container(border=True):
-        st.markdown(f"<div class='subtle-card'>{text('summary', language)}</div>", unsafe_allow_html=True)
-        render_metric_cards(
-            [
-                (text("today_focus_minutes", language), str(summary["focus_minutes"]), "專注"),
-                (text("today_study_hours", language), str(summary["study_hours"]), "時數"),
-                (text("today_pomodoros", language), str(summary["pomodoros"]), "番茄"),
-            ]
-        )
+    render_metric_cards(
+        [
+            (text("today_focus_minutes", language), str(summary["focus_minutes"]), "專注"),
+            (text("today_study_hours", language), str(summary["study_hours"]), "時數"),
+            (text("today_pomodoros", language), str(summary["pomodoros"]), "番茄"),
+        ]
+    )
 
-    st.markdown("<div class='subtle-card'>", unsafe_allow_html=True)
     st.subheader(text("today_subject_hours", language))
     st.dataframe(display_df(summary["subject_hours"], language), use_container_width=True, hide_index=True)
-    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='subtle-card'>", unsafe_allow_html=True)
     st.subheader(text("today_records", language))
     records = summary["records"]
     st.dataframe(display_df(records, language), use_container_width=True, hide_index=True)
-    st.markdown("</div>", unsafe_allow_html=True)
 
     if records.empty:
         st.info(text("no_records_today", language))
         return
 
-    st.markdown("<div class='subtle-card'>", unsafe_allow_html=True)
     st.subheader(text("edit_record", language))
     record_ids = records["id"].astype(str).tolist()
     selected_id = st.selectbox(
@@ -1497,7 +1492,6 @@ def render_today_page(db: SheetsDB, timezone: str, language: str) -> None:
         stuck = st.text_area(text("stuck", language), value=str(selected_row.get("stuck", "")))
         next_action = st.text_area(text("next_action", language), value=str(selected_row.get("next_action", "")))
         submitted = st.form_submit_button(text("save_changes", language))
-    st.markdown("</div>", unsafe_allow_html=True)
 
     if submitted:
         db.update_session_fields(
