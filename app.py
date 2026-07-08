@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import base64
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -23,7 +23,6 @@ from config import ConfigError, load_config, validate_runtime_config
 from sheets_db import SheetsDB
 
 ALARM_PATH = Path(__file__).with_name("Alarm.mp3")
-ALARM_DURATION_MS = 5000
 TIMER_REFRESH_MS = 500
 WRITE_AFTER_FINISH_REFRESH_MS = 600
 
@@ -60,6 +59,7 @@ TASK_TYPES = [
 ]
 
 SCHEDULE_MODES = ["manual", "auto"]
+SESSION_STATUS_OPTIONS = ["completed", "saved_partial", "stopped"]
 
 SEARCH_FIELDS = [
     "subject",
@@ -70,6 +70,8 @@ SEARCH_FIELDS = [
     "stuck",
     "next_action",
 ]
+
+HIDDEN_DISPLAY_COLUMNS = {"id", "created_at", "updated_at"}
 
 UI_STYLE = """
 <style>
@@ -505,6 +507,37 @@ I18N["en"].update(
     }
 )
 
+I18N["zh"].update(
+    {
+        "daily_range_chart": "每日專注時間圖表",
+        "chart_start_date": "開始日期",
+        "chart_end_date": "結束日期",
+        "date_range_swapped": "開始日期晚於結束日期，已自動交換日期區間。",
+        "range_chart_title": "日期區間內每日累積專注時間",
+        "edit_search_record": "修改搜尋結果紀錄",
+        "delete_record": "刪除紀錄",
+        "delete_record_warning": "刪除後會移除這筆 study_sessions，也會移除對應的 pomodoro_events。",
+        "confirm_delete": "我確認要刪除這筆紀錄",
+        "confirm_delete_first": "請先勾選確認刪除。",
+        "deleted": "紀錄已刪除。",
+    }
+)
+I18N["en"].update(
+    {
+        "daily_range_chart": "Daily focus time chart",
+        "chart_start_date": "Start date",
+        "chart_end_date": "End date",
+        "date_range_swapped": "Start date is later than end date, so the range was swapped automatically.",
+        "range_chart_title": "Daily accumulated focus time in selected range",
+        "edit_search_record": "Edit search result record",
+        "delete_record": "Delete record",
+        "delete_record_warning": "Deleting removes this study_sessions row and its matching pomodoro_events.",
+        "confirm_delete": "I confirm deleting this record",
+        "confirm_delete_first": "Please check the confirmation box first.",
+        "deleted": "Record deleted.",
+    }
+)
+
 
 def configure_page() -> None:
     st.set_page_config(page_title="Study Pomodoro Tracker", layout="wide", initial_sidebar_state="expanded")
@@ -527,6 +560,45 @@ def get_language() -> str:
 def text(key: str, language: str | None = None) -> str:
     lang = language or get_language()
     return I18N.get(lang, I18N["zh"]).get(key, I18N["en"].get(key, key))
+
+
+def column_label(column: str, language: str) -> str:
+    return COLUMN_LABELS.get(language, {}).get(column, column)
+
+
+def scalar_text(value) -> str:
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except TypeError:
+        pass
+    return str(value)
+
+
+def scalar_float(value, default: float = 0.0) -> float:
+    try:
+        if value is None or pd.isna(value):
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def scalar_int(value, default: int = 0) -> int:
+    return int(round(scalar_float(value, float(default))))
+
+
+def scalar_date(value, fallback: date) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        return fallback
+    return parsed.date()
 
 
 def phase_class(phase: str) -> str:
@@ -568,6 +640,22 @@ def option_label(prefix: str, value: str, language: str) -> str:
     return value if translated == key else translated
 
 
+def record_option_label(records: pd.DataFrame, record_id: str, language: str) -> str:
+    matched = records[records["id"].astype(str) == str(record_id)]
+    if matched.empty:
+        return ""
+    row = matched.iloc[0]
+    status = text(str(row.get("status", "")), language)
+    parts = [
+        str(row.get("date", "")),
+        str(row.get("start_time", "")),
+        str(row.get("subject", "")),
+        str(row.get("book_or_course", "")),
+        status,
+    ]
+    return " | ".join(part for part in parts if part and part != "nan")
+
+
 def page_label(page_key: str, language: str) -> str:
     return text(f"page_{page_key}", language)
 
@@ -602,7 +690,7 @@ def main() -> None:
     elif page == "stats":
         render_stats_page(db, config.timezone, language)
     elif page == "search":
-        render_search_page(db, language)
+        render_search_page(db, config.timezone, language)
     elif page == "export":
         render_export_page(db, config.timezone, language)
 
@@ -756,7 +844,7 @@ def render_timer_panel(timezone: str, language: str) -> None:
 
 
 def render_alarm_player() -> None:
-    alarm_count = timer_state.consume_pending_alarm_count()
+    pending_alarms = timer_state.consume_pending_alarms()
     stop_requested = bool(st.session_state.pop("alarm_stop_requested", False))
     token = int(st.session_state.get("alarm_refresh_token", 0)) + 1
     st.session_state["alarm_refresh_token"] = token
@@ -768,14 +856,17 @@ def render_alarm_player() -> None:
     action_lines = []
     if stop_requested:
         action_lines.append("target.__stopPomodoroAlarm && target.__stopPomodoroAlarm();")
-    if alarm_count > 0:
-        action_lines.append(f"target.__playPomodoroAlarm && target.__playPomodoroAlarm({token});")
+    if pending_alarms:
+        latest_alarm = pending_alarms[-1]
+        duration_ms = latest_alarm.get("duration_ms")
+        action_lines.append(
+            f"target.__playPomodoroAlarm && target.__playPomodoroAlarm({token}, {json.dumps(duration_ms)});"
+        )
 
     html = """
     <script>
     (() => {
         const alarmSrc = __ALARM_SRC__;
-        const alarmDurationMs = __ALARM_DURATION_MS__;
 
         const getTargetWindow = () => {
             try {
@@ -790,7 +881,21 @@ def render_alarm_player() -> None:
 
         const target = getTargetWindow();
         target.__pomodoroAlarmSrc = alarmSrc;
-        target.__pomodoroAlarmDurationMs = alarmDurationMs;
+
+        const normalizedDurationMs = (maxDurationMs) => {
+            const durationMs = Number(maxDurationMs);
+            return Number.isFinite(durationMs) && durationMs > 0 ? durationMs : null;
+        };
+
+        const scheduleAlarmStop = (alarmToken, maxDurationMs) => {
+            const durationMs = normalizedDurationMs(maxDurationMs);
+            if (!durationMs) {
+                return;
+            }
+            target.__pomodoroAlarmStopTimer = target.setTimeout(() => {
+                target.__stopPomodoroAlarm(alarmToken);
+            }, durationMs);
+        };
 
         const toArrayBuffer = (dataUri) => {
             const base64Data = dataUri.split(",")[1] || "";
@@ -862,7 +967,7 @@ def render_alarm_player() -> None:
             target.__pomodoroAlarmToken = null;
         };
 
-        const playWithHtmlAudio = (alarmToken) => {
+        const playWithHtmlAudio = (alarmToken, maxDurationMs) => {
             target.__stopPomodoroAlarm();
             const audio = new target.Audio(alarmSrc);
             audio.volume = 1;
@@ -873,12 +978,10 @@ def render_alarm_player() -> None:
                 target.__pomodoroAlarmLastError = String(error);
                 console.warn("Pomodoro alarm was blocked by the browser.", error);
             });
-            target.__pomodoroAlarmStopTimer = target.setTimeout(() => {
-                target.__stopPomodoroAlarm(alarmToken);
-            }, alarmDurationMs);
+            scheduleAlarmStop(alarmToken, maxDurationMs);
         };
 
-        target.__playPomodoroAlarm = async (alarmToken) => {
+        target.__playPomodoroAlarm = async (alarmToken, maxDurationMs) => {
             try {
                 const audioContext = getAudioContext();
                 if (!audioContext) {
@@ -904,12 +1007,10 @@ def render_alarm_player() -> None:
                     }
                 };
                 source.start(0, 0);
-                target.__pomodoroAlarmStopTimer = target.setTimeout(() => {
-                    target.__stopPomodoroAlarm(alarmToken);
-                }, alarmDurationMs);
+                scheduleAlarmStop(alarmToken, maxDurationMs);
             } catch (error) {
                 target.__pomodoroAlarmLastError = String(error);
-                playWithHtmlAudio(alarmToken);
+                playWithHtmlAudio(alarmToken, maxDurationMs);
             }
         };
 
@@ -950,7 +1051,6 @@ def render_alarm_player() -> None:
     </script>
     """
     html = html.replace("__ALARM_SRC__", json.dumps(alarm_src))
-    html = html.replace("__ALARM_DURATION_MS__", str(ALARM_DURATION_MS))
     html = html.replace("__ALARM_ACTIONS__", "\n        ".join(action_lines))
     components.html(
         html,
@@ -1227,12 +1327,12 @@ def render_today_page(db: SheetsDB, timezone: str, language: str) -> None:
 
     st.markdown("<div class='subtle-card'>", unsafe_allow_html=True)
     st.subheader(text("edit_record", language))
-    labels = records.apply(
-        lambda row: f"{row['start_time']} | {row['subject']} | {row['book_or_course']} | {row['status']} | {row['id']}",
-        axis=1,
-    ).tolist()
-    selected = st.selectbox(text("select_record", language), labels)
-    selected_id = selected.split(" | ")[-1]
+    record_ids = records["id"].astype(str).tolist()
+    selected_id = st.selectbox(
+        text("select_record", language),
+        record_ids,
+        format_func=lambda record_id: record_option_label(records, record_id, language),
+    )
     selected_row = records[records["id"] == selected_id].iloc[0]
 
     with st.form("edit_today_record"):
@@ -1285,11 +1385,29 @@ def render_stats_page(db: SheetsDB, timezone: str, language: str) -> None:
             st.dataframe(display_df(summary["task_type_hours"], language), use_container_width=True, hide_index=True)
 
     with st.container(border=True):
-        st.subheader(text("daily_line", language))
+        st.subheader(text("daily_range_chart", language))
+        default_start = today - timedelta(days=6)
+        range_col_1, range_col_2 = st.columns(2)
+        with range_col_1:
+            start_date = st.date_input(
+                text("chart_start_date", language),
+                value=default_start,
+                key="stats_chart_start_date",
+            )
+        with range_col_2:
+            end_date = st.date_input(
+                text("chart_end_date", language),
+                value=today,
+                key="stats_chart_end_date",
+            )
+        if start_date > end_date:
+            st.warning(text("date_range_swapped", language))
+            start_date, end_date = end_date, start_date
+        range_daily_hours = analytics.daily_hours_between(summary["counted"], start_date, end_date)
         st.pyplot(
-            analytics.daily_hours_figure(
-                summary["daily_hours"],
-                title=text("chart_title", language),
+            analytics.daily_hours_bar_figure(
+                range_daily_hours,
+                title=text("range_chart_title", language),
                 x_label=text("chart_x", language),
                 y_label=text("chart_y", language),
                 empty_label=text("chart_empty", language),
@@ -1301,7 +1419,7 @@ def render_stats_page(db: SheetsDB, timezone: str, language: str) -> None:
         st.dataframe(display_df(summary["weekly_hours"], language), use_container_width=True, hide_index=True)
 
 
-def render_search_page(db: SheetsDB, language: str) -> None:
+def render_search_page(db: SheetsDB, timezone: str, language: str) -> None:
     drain_pending_writes(db, language)
     df = db.get_study_sessions_df()
 
@@ -1312,7 +1430,7 @@ def render_search_page(db: SheetsDB, language: str) -> None:
         rows = [st.columns(4), st.columns(4)]
         for index, field in enumerate(SEARCH_FIELDS):
             with rows[index // 4][index % 4]:
-                filters[field] = st.text_input(COLUMN_LABELS.get(language, {}).get(field, field))
+                filters[field] = st.text_input(column_label(field, language))
 
     results = analytics.search_sessions(df, filters)
     with st.container(border=True):
@@ -1320,6 +1438,148 @@ def render_search_page(db: SheetsDB, language: str) -> None:
         st.metric(text("search_results", language), len(results))
         st.dataframe(display_df(results, language), use_container_width=True, hide_index=True)
         st.markdown("</div>", unsafe_allow_html=True)
+
+    if results.empty:
+        return
+
+    st.markdown("<div class='subtle-card'>", unsafe_allow_html=True)
+    st.subheader(text("edit_search_record", language))
+    result_ids = results["id"].astype(str).tolist()
+    selected_state = st.session_state.get("search_selected_record")
+    selected_index = result_ids.index(selected_state) if selected_state in result_ids else 0
+    selected_id = st.selectbox(
+        text("select_record", language),
+        result_ids,
+        index=selected_index,
+        format_func=lambda record_id: record_option_label(results, record_id, language),
+        key="search_selected_record",
+    )
+    selected_row = results[results["id"].astype(str) == str(selected_id)].iloc[0]
+
+    current_task_type = scalar_text(selected_row.get("task_type")) or "other"
+    task_type_value = current_task_type if current_task_type in TASK_TYPES else "other"
+    current_status = scalar_text(selected_row.get("status")) or "completed"
+    status_options = list(SESSION_STATUS_OPTIONS)
+    if current_status not in status_options:
+        status_options.append(current_status)
+
+    with st.form(f"edit_search_record_{selected_id}"):
+        date_col, time_col_1, time_col_2 = st.columns(3)
+        with date_col:
+            record_date = st.date_input(
+                column_label("date", language),
+                value=scalar_date(selected_row.get("date"), local_today(timezone)),
+            )
+        with time_col_1:
+            start_time = st.text_input(column_label("start_time", language), value=scalar_text(selected_row.get("start_time")))
+        with time_col_2:
+            end_time = st.text_input(column_label("end_time", language), value=scalar_text(selected_row.get("end_time")))
+
+        subject_col, book_col = st.columns(2)
+        with subject_col:
+            subject = st.text_input(column_label("subject", language), value=scalar_text(selected_row.get("subject")))
+        with book_col:
+            book_or_course = st.text_input(
+                column_label("book_or_course", language),
+                value=scalar_text(selected_row.get("book_or_course")),
+            )
+
+        chapter = st.text_input(column_label("chapter", language), value=scalar_text(selected_row.get("chapter")))
+        task_type = st.selectbox(
+            column_label("task_type", language),
+            TASK_TYPES,
+            index=TASK_TYPES.index(task_type_value),
+            format_func=lambda value: option_label("task", value, language),
+        )
+        custom_task_type = ""
+        if task_type == "other":
+            custom_task_type = st.text_input(
+                text("custom_task_type", language),
+                value="" if current_task_type in TASK_TYPES else current_task_type,
+            )
+
+        metric_col_1, metric_col_2, metric_col_3, metric_col_4 = st.columns(4)
+        with metric_col_1:
+            focus_minutes = st.number_input(
+                column_label("focus_minutes", language),
+                min_value=0.0,
+                value=scalar_float(selected_row.get("focus_minutes")),
+                step=1.0,
+            )
+        with metric_col_2:
+            break_minutes = st.number_input(
+                column_label("break_minutes", language),
+                min_value=0.0,
+                value=scalar_float(selected_row.get("break_minutes")),
+                step=1.0,
+            )
+        with metric_col_3:
+            completed_pomodoros = st.number_input(
+                column_label("completed_pomodoros", language),
+                min_value=0,
+                value=scalar_int(selected_row.get("completed_pomodoros")),
+                step=1,
+            )
+        with metric_col_4:
+            pomodoro_minutes = st.number_input(
+                column_label("pomodoro_minutes", language),
+                min_value=0.0,
+                value=scalar_float(selected_row.get("pomodoro_minutes")),
+                step=1.0,
+            )
+
+        status = st.selectbox(
+            column_label("status", language),
+            status_options,
+            index=status_options.index(current_status),
+            format_func=lambda value: text(str(value), language),
+        )
+        plan_note = st.text_area(column_label("plan_note", language), value=scalar_text(selected_row.get("plan_note")))
+        output = st.text_area(column_label("output", language), value=scalar_text(selected_row.get("output")))
+        stuck = st.text_area(column_label("stuck", language), value=scalar_text(selected_row.get("stuck")))
+        next_action = st.text_area(column_label("next_action", language), value=scalar_text(selected_row.get("next_action")))
+        edit_submitted = st.form_submit_button(text("save_changes", language), use_container_width=True)
+
+    if edit_submitted:
+        saved_task_type = custom_task_type.strip() if task_type == "other" and custom_task_type.strip() else task_type
+        db.update_session_fields(
+            selected_id,
+            {
+                "date": record_date.isoformat(),
+                "start_time": start_time.strip(),
+                "end_time": end_time.strip(),
+                "subject": subject.strip(),
+                "book_or_course": book_or_course.strip(),
+                "chapter": chapter.strip(),
+                "task_type": saved_task_type,
+                "plan_note": plan_note.strip(),
+                "focus_minutes": round(float(focus_minutes), 2),
+                "break_minutes": round(float(break_minutes), 2),
+                "completed_pomodoros": int(completed_pomodoros),
+                "pomodoro_minutes": round(float(pomodoro_minutes), 2),
+                "status": status,
+                "output": output.strip(),
+                "stuck": stuck.strip(),
+                "next_action": next_action.strip(),
+            },
+            timezone=timezone,
+        )
+        st.success(text("updated", language))
+        st.rerun()
+
+    with st.form(f"delete_search_record_{selected_id}"):
+        st.warning(text("delete_record_warning", language))
+        confirm_delete = st.checkbox(text("confirm_delete", language))
+        delete_submitted = st.form_submit_button(text("delete_record", language), use_container_width=True)
+
+    if delete_submitted:
+        if not confirm_delete:
+            st.error(text("confirm_delete_first", language))
+        else:
+            db.delete_session(selected_id)
+            st.success(text("deleted", language))
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_export_page(db: SheetsDB, timezone: str, language: str) -> None:
@@ -1369,8 +1629,9 @@ def display_df(df: pd.DataFrame, language: str) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame()
     result = df.copy()
-    if "proof_status" in result.columns:
-        result = result.drop(columns=["proof_status"])
+    drop_columns = [column for column in HIDDEN_DISPLAY_COLUMNS | {"proof_status"} if column in result.columns]
+    if drop_columns:
+        result = result.drop(columns=drop_columns)
     if "status" in result.columns:
         result["status"] = result["status"].map(lambda value: text(str(value), language))
     if "task_type" in result.columns:

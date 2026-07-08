@@ -12,6 +12,7 @@ import streamlit as st
 TIMER_KEY = "timer"
 ACTIVE_PHASES = {"focus", "break"}
 VISIBLE_INACTIVE_PHASES = {"completed", "saved_partial", "stopped", "paused"}
+BREAK_END_ALARM_DURATION_MS = 5000
 
 
 def _empty_timer_state() -> dict[str, Any]:
@@ -21,6 +22,7 @@ def _empty_timer_state() -> dict[str, Any]:
         "pending_pomodoro_events": [],
         "pending_session_record": None,
         "pending_alarm_count": 0,
+        "pending_alarms": [],
         "saved_message": "",
     }
 
@@ -136,6 +138,7 @@ def start_session(values: dict[str, Any], timezone: str) -> None:
         "pending_pomodoro_events": [],
         "pending_session_record": None,
         "pending_alarm_count": 0,
+        "pending_alarms": [],
         "saved_message": "",
     }
 
@@ -199,7 +202,7 @@ def advance_timer(timezone: str) -> None:
             event_focus_seconds = float(timer["current_focus_seconds"]) + needed
             timer["total_focus_seconds"] += needed
             timer["completed_pomodoros"] += 1
-            timer["pending_alarm_count"] = int(timer.get("pending_alarm_count", 0)) + 1
+            _queue_alarm(timer, duration_ms=None)
             timer["pending_pomodoro_events"].append(
                 {
                     "id": str(uuid.uuid4()),
@@ -235,7 +238,7 @@ def advance_timer(timezone: str) -> None:
                 break_ended_at = _dt(timer["phase_started_at"]) + timedelta(seconds=needed)
                 timer["total_break_seconds"] += needed
 
-            timer["pending_alarm_count"] = int(timer.get("pending_alarm_count", 0)) + 1
+            _queue_alarm(timer, duration_ms=BREAK_END_ALARM_DURATION_MS)
             timer["phase"] = "focus"
             timer["phase_started_at"] = _iso(break_ended_at)
             timer["focus_started_at"] = _iso(break_ended_at)
@@ -251,8 +254,16 @@ def stop_session(timezone: str) -> None:
     if not timer.get("active"):
         return
     timer["pending_alarm_count"] = 0
+    timer["pending_alarms"] = []
     current = _commit_active_phase_elapsed(timer, timezone)
     _finish_session(timer, "stopped", current)
+
+
+def _queue_alarm(timer: dict[str, Any], duration_ms: int | None) -> None:
+    pending = list(timer.get("pending_alarms") or [])
+    pending.append({"duration_ms": duration_ms})
+    timer["pending_alarms"] = pending
+    timer["pending_alarm_count"] = int(timer.get("pending_alarm_count", 0)) + 1
 
 
 def _commit_active_phase_elapsed(timer: dict[str, Any], timezone: str) -> datetime:
@@ -385,7 +396,19 @@ def consume_pending_alarm_count() -> int:
     timer = get_timer()
     count = int(timer.get("pending_alarm_count", 0))
     timer["pending_alarm_count"] = 0
+    timer["pending_alarms"] = []
     return count
+
+
+def consume_pending_alarms() -> list[dict[str, Any]]:
+    timer = get_timer()
+    pending = list(timer.get("pending_alarms") or [])
+    legacy_count = int(timer.get("pending_alarm_count", 0))
+    if not pending and legacy_count > 0:
+        pending = [{"duration_ms": None} for _ in range(legacy_count)]
+    timer["pending_alarm_count"] = 0
+    timer["pending_alarms"] = []
+    return pending
 
 
 def has_pending_writes() -> bool:

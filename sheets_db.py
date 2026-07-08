@@ -145,6 +145,20 @@ class SheetsDB:
         if updates:
             self.study_ws.batch_update(updates)
 
+    def delete_session(self, session_id: str) -> None:
+        if not session_id:
+            return
+
+        study_header = self._ensure_header(self.study_ws, STUDY_SESSION_HEADERS)
+        study_row_number = self._find_row_by_id(self.study_ws, study_header, session_id)
+        if not study_row_number:
+            raise KeyError(f"找不到 session id：{session_id}")
+
+        event_header = self._ensure_header(self.events_ws, POMODORO_EVENT_HEADERS)
+        for row_number in reversed(self._find_rows_by_value(self.events_ws, event_header, "session_id", session_id)):
+            self.events_ws.delete_rows(row_number)
+        self.study_ws.delete_rows(study_row_number)
+
     def _append_record(self, worksheet, expected_headers: list[str], record: dict[str, Any]) -> None:
         values = [record.get(column, "") for column in expected_headers]
         worksheet.append_row(values, value_input_option="USER_ENTERED")
@@ -158,3 +172,14 @@ class SheetsDB:
             if str(value) == str(record_id):
                 return row_number
         return None
+
+    def _find_rows_by_value(self, worksheet, header: list[str], column: str, value: str) -> list[int]:
+        if not value or column not in header:
+            return []
+        col_number = header.index(column) + 1
+        values = worksheet.col_values(col_number)
+        return [
+            row_number
+            for row_number, cell_value in enumerate(values[1:], start=2)
+            if str(cell_value) == str(value)
+        ]

@@ -145,6 +145,28 @@ def daily_hours(df: pd.DataFrame) -> pd.DataFrame:
     return result.drop(columns=["focus_minutes"]).sort_values("date").reset_index(drop=True)
 
 
+def daily_hours_between(df: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
+
+    all_dates = pd.date_range(start=start_date, end=end_date, freq="D")
+    base = pd.DataFrame({"date": all_dates.date})
+    counted = counted_sessions(df)
+    if counted.empty:
+        base["hours"] = 0.0
+        return base
+
+    window = counted[(counted["date"] >= start_date) & (counted["date"] <= end_date)]
+    if window.empty:
+        base["hours"] = 0.0
+        return base
+
+    grouped = daily_hours(window)
+    result = base.merge(grouped, on="date", how="left")
+    result["hours"] = result["hours"].fillna(0.0).round(2)
+    return result
+
+
 def weekly_hours(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=["week_start", "week_end", "hours", "pomodoros"])
@@ -199,6 +221,35 @@ def daily_hours_figure(
     ax.set_ylabel(y_label)
     ax.grid(True, alpha=0.25)
     fig.autofmt_xdate()
+    fig.tight_layout()
+    return fig
+
+
+def daily_hours_bar_figure(
+    daily_df: pd.DataFrame,
+    title: str = "Daily focus hours",
+    x_label: str = "Date",
+    y_label: str = "Hours",
+    empty_label: str = "No data yet",
+):
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    if daily_df.empty:
+        ax.set_title(title)
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        ax.text(0.5, 0.5, empty_label, ha="center", va="center", transform=ax.transAxes)
+        ax.set_xticks([])
+        return fig
+
+    plot_df = daily_df.copy()
+    plot_df["date_label"] = pd.to_datetime(plot_df["date"]).dt.strftime("%m-%d")
+    bars = ax.bar(plot_df["date_label"], plot_df["hours"], color="#0ea5e9")
+    ax.bar_label(bars, fmt="%.2g", padding=3)
+    ax.set_title(title)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.grid(axis="y", alpha=0.25)
+    ax.tick_params(axis="x", rotation=45)
     fig.tight_layout()
     return fig
 
