@@ -764,6 +764,17 @@ def get_alarm_data_uri() -> str:
     return load_alarm_data_uri(str(ALARM_PATH), stat.st_mtime_ns)
 
 
+def consume_alarm_events() -> list[dict[str, int | None]]:
+    if hasattr(timer_state, "consume_pending_alarms"):
+        return timer_state.consume_pending_alarms()
+
+    if hasattr(timer_state, "consume_pending_alarm_count"):
+        legacy_count = timer_state.consume_pending_alarm_count()
+        return [{"duration_ms": None} for _ in range(legacy_count)]
+
+    return []
+
+
 def render_start_page(db: SheetsDB, timezone: str, language: str) -> None:
     timer_state.advance_timer(timezone)
     render_alarm_player()
@@ -844,7 +855,7 @@ def render_timer_panel(timezone: str, language: str) -> None:
 
 
 def render_alarm_player() -> None:
-    pending_alarms = timer_state.consume_pending_alarms()
+    pending_alarms = consume_alarm_events()
     stop_requested = bool(st.session_state.pop("alarm_stop_requested", False))
     token = int(st.session_state.get("alarm_refresh_token", 0)) + 1
     st.session_state["alarm_refresh_token"] = token
