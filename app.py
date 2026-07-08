@@ -846,6 +846,49 @@ def consume_alarm_events() -> list[dict[str, int | None]]:
     return []
 
 
+def delete_session_compat(db: SheetsDB, session_id: str) -> None:
+    if hasattr(db, "delete_session"):
+        db.delete_session(session_id)
+        return
+
+    if not session_id:
+        return
+
+    study_ws = getattr(db, "study_ws", None)
+    events_ws = getattr(db, "events_ws", None)
+    if study_ws is None:
+        raise RuntimeError("study_sessions worksheet is unavailable")
+
+    study_header = [str(value).strip() for value in study_ws.row_values(1)]
+    study_row = find_worksheet_row(study_ws, study_header, "id", session_id)
+    if not study_row:
+        raise KeyError(f"找不到 session id：{session_id}")
+
+    if events_ws is not None:
+        event_header = [str(value).strip() for value in events_ws.row_values(1)]
+        for row_number in reversed(find_worksheet_rows(events_ws, event_header, "session_id", session_id)):
+            events_ws.delete_rows(row_number)
+
+    study_ws.delete_rows(study_row)
+
+
+def find_worksheet_row(worksheet, header: list[str], column: str, value: str) -> int | None:
+    rows = find_worksheet_rows(worksheet, header, column, value)
+    return rows[0] if rows else None
+
+
+def find_worksheet_rows(worksheet, header: list[str], column: str, value: str) -> list[int]:
+    if not value or column not in header:
+        return []
+    col_number = header.index(column) + 1
+    values = worksheet.col_values(col_number)
+    return [
+        row_number
+        for row_number, cell_value in enumerate(values[1:], start=2)
+        if str(cell_value) == str(value)
+    ]
+
+
 def render_start_page(db: SheetsDB, timezone: str, language: str) -> None:
     timer_state.advance_timer(timezone)
     render_alarm_player()
@@ -1664,7 +1707,7 @@ def render_search_page(db: SheetsDB, timezone: str, language: str) -> None:
         if not confirm_delete:
             st.error(text("confirm_delete_first", language))
         else:
-            db.delete_session(selected_id)
+            delete_session_compat(db, selected_id)
             st.success(text("deleted", language))
             st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
