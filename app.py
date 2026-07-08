@@ -663,6 +663,19 @@ def request_alarm_stop() -> None:
     st.session_state["alarm_stop_requested"] = True
 
 
+@st.cache_data(show_spinner=False)
+def load_alarm_data_uri(path: str, mtime_ns: int) -> str:
+    del mtime_ns
+    return "data:audio/mpeg;base64," + base64.b64encode(Path(path).read_bytes()).decode("ascii")
+
+
+def get_alarm_data_uri() -> str:
+    if not ALARM_PATH.exists():
+        return ""
+    stat = ALARM_PATH.stat()
+    return load_alarm_data_uri(str(ALARM_PATH), stat.st_mtime_ns)
+
+
 def render_start_page(db: SheetsDB, timezone: str, language: str) -> None:
     timer_state.advance_timer(timezone)
     render_alarm_player()
@@ -748,110 +761,200 @@ def render_alarm_player() -> None:
     token = int(st.session_state.get("alarm_refresh_token", 0)) + 1
     st.session_state["alarm_refresh_token"] = token
 
-    stop_script = """
+    alarm_src = get_alarm_data_uri()
+    if not alarm_src:
+        return
+
+    action_lines = []
+    if stop_requested:
+        action_lines.append("target.__stopPomodoroAlarm && target.__stopPomodoroAlarm();")
+    if alarm_count > 0:
+        action_lines.append(f"target.__playPomodoroAlarm && target.__playPomodoroAlarm({token});")
+
+    html = """
     <script>
     (() => {
-        const stopPomodoroAlarm = (targetWindow) => {
-            if (!targetWindow) {
-                return;
-            }
-            const stopTimer = targetWindow.__pomodoroAlarmStopTimer;
-            if (stopTimer) {
-                targetWindow.clearTimeout(stopTimer);
-                targetWindow.__pomodoroAlarmStopTimer = null;
-            }
-            const currentAudio = targetWindow.__pomodoroAlarm;
-            if (!currentAudio) {
-                return;
-            }
+        const alarmSrc = __ALARM_SRC__;
+        const alarmDurationMs = __ALARM_DURATION_MS__;
+
+        const getTargetWindow = () => {
             try {
-                currentAudio.pause();
-                currentAudio.currentTime = 0;
+                if (window.parent && window.parent !== window) {
+                    void window.parent.document;
+                    return window.parent;
+                }
             } catch (error) {
             }
-            if (targetWindow.__pomodoroAlarm === currentAudio) {
-                targetWindow.__pomodoroAlarm = null;
-            }
-            targetWindow.__pomodoroAlarmToken = null;
+            return window;
         };
 
-        const targetWindow = window.parent || window;
-        stopPomodoroAlarm(targetWindow);
-        if (window !== targetWindow) {
-            stopPomodoroAlarm(window);
+        const target = getTargetWindow();
+        target.__pomodoroAlarmSrc = alarmSrc;
+        target.__pomodoroAlarmDurationMs = alarmDurationMs;
+
+        const toArrayBuffer = (dataUri) => {
+            const base64Data = dataUri.split(",")[1] || "";
+            const binary = target.atob(base64Data);
+            const bytes = new Uint8Array(binary.length);
+            for (let index = 0; index < binary.length; index += 1) {
+                bytes[index] = binary.charCodeAt(index);
+            }
+            return bytes.buffer;
+        };
+
+        const getAudioContext = () => {
+            const AudioContextCtor = target.AudioContext || target.webkitAudioContext;
+            if (!AudioContextCtor) {
+                return null;
+            }
+            if (!target.__pomodoroAlarmAudioContext) {
+                target.__pomodoroAlarmAudioContext = new AudioContextCtor();
+            }
+            return target.__pomodoroAlarmAudioContext;
+        };
+
+        const getAlarmBuffer = () => {
+            if (target.__pomodoroAlarmBufferPromise) {
+                return target.__pomodoroAlarmBufferPromise;
+            }
+            const audioContext = getAudioContext();
+            if (!audioContext) {
+                return Promise.reject(new Error("AudioContext is unavailable"));
+            }
+            target.__pomodoroAlarmBufferPromise = audioContext.decodeAudioData(toArrayBuffer(alarmSrc).slice(0));
+            return target.__pomodoroAlarmBufferPromise;
+        };
+
+        target.__stopPomodoroAlarm = (expectedToken) => {
+            if (expectedToken && target.__pomodoroAlarmToken && target.__pomodoroAlarmToken !== expectedToken) {
+                return;
+            }
+            if (target.__pomodoroAlarmStopTimer) {
+                target.clearTimeout(target.__pomodoroAlarmStopTimer);
+                target.__pomodoroAlarmStopTimer = null;
+            }
+            if (target.__pomodoroAlarmSource) {
+                try {
+                    target.__pomodoroAlarmSource.stop(0);
+                } catch (error) {
+                }
+                try {
+                    target.__pomodoroAlarmSource.disconnect();
+                } catch (error) {
+                }
+                target.__pomodoroAlarmSource = null;
+            }
+            if (target.__pomodoroAlarmGain) {
+                try {
+                    target.__pomodoroAlarmGain.disconnect();
+                } catch (error) {
+                }
+                target.__pomodoroAlarmGain = null;
+            }
+            if (target.__pomodoroAlarmAudio) {
+                try {
+                    target.__pomodoroAlarmAudio.pause();
+                    target.__pomodoroAlarmAudio.currentTime = 0;
+                } catch (error) {
+                }
+                target.__pomodoroAlarmAudio = null;
+            }
+            target.__pomodoroAlarmToken = null;
+        };
+
+        const playWithHtmlAudio = (alarmToken) => {
+            target.__stopPomodoroAlarm();
+            const audio = new target.Audio(alarmSrc);
+            audio.volume = 1;
+            audio.loop = false;
+            target.__pomodoroAlarmToken = alarmToken;
+            target.__pomodoroAlarmAudio = audio;
+            audio.play().catch((error) => {
+                target.__pomodoroAlarmLastError = String(error);
+                console.warn("Pomodoro alarm was blocked by the browser.", error);
+            });
+            target.__pomodoroAlarmStopTimer = target.setTimeout(() => {
+                target.__stopPomodoroAlarm(alarmToken);
+            }, alarmDurationMs);
+        };
+
+        target.__playPomodoroAlarm = async (alarmToken) => {
+            try {
+                const audioContext = getAudioContext();
+                if (!audioContext) {
+                    throw new Error("AudioContext is unavailable");
+                }
+                if (audioContext.state === "suspended") {
+                    await audioContext.resume();
+                }
+                const buffer = await getAlarmBuffer();
+                target.__stopPomodoroAlarm();
+                const source = audioContext.createBufferSource();
+                const gain = audioContext.createGain();
+                source.buffer = buffer;
+                gain.gain.value = 1;
+                source.connect(gain);
+                gain.connect(audioContext.destination);
+                target.__pomodoroAlarmToken = alarmToken;
+                target.__pomodoroAlarmSource = source;
+                target.__pomodoroAlarmGain = gain;
+                source.onended = () => {
+                    if (target.__pomodoroAlarmToken === alarmToken) {
+                        target.__stopPomodoroAlarm(alarmToken);
+                    }
+                };
+                source.start(0, 0);
+                target.__pomodoroAlarmStopTimer = target.setTimeout(() => {
+                    target.__stopPomodoroAlarm(alarmToken);
+                }, alarmDurationMs);
+            } catch (error) {
+                target.__pomodoroAlarmLastError = String(error);
+                playWithHtmlAudio(alarmToken);
+            }
+        };
+
+        target.__unlockPomodoroAlarm = () => {
+            const audioContext = getAudioContext();
+            if (!audioContext) {
+                return;
+            }
+            audioContext.resume().then(() => getAlarmBuffer()).catch((error) => {
+                target.__pomodoroAlarmLastError = String(error);
+            });
+            try {
+                const silentBuffer = audioContext.createBuffer(1, 1, Math.max(1, audioContext.sampleRate));
+                const silentSource = audioContext.createBufferSource();
+                const silentGain = audioContext.createGain();
+                silentGain.gain.value = 0;
+                silentSource.buffer = silentBuffer;
+                silentSource.connect(silentGain);
+                silentGain.connect(audioContext.destination);
+                silentSource.start(0);
+            } catch (error) {
+            }
+        };
+
+        if (!target.__pomodoroAlarmListenersReady && target.document) {
+            target.__pomodoroAlarmListenersReady = true;
+            ["pointerdown", "click", "keydown", "touchstart"].forEach((eventName) => {
+                target.document.addEventListener(
+                    eventName,
+                    () => target.__unlockPomodoroAlarm && target.__unlockPomodoroAlarm(),
+                    { capture: true, passive: true }
+                );
+            });
         }
+
+        __ALARM_ACTIONS__
     })();
     </script>
     """
-
-    if stop_requested:
-        components.html(stop_script, height=0)
-        return
-
-    if alarm_count <= 0 or not ALARM_PATH.exists():
-        return
-
-    audio_data = base64.b64encode(ALARM_PATH.read_bytes()).decode("ascii")
+    html = html.replace("__ALARM_SRC__", json.dumps(alarm_src))
+    html = html.replace("__ALARM_DURATION_MS__", str(ALARM_DURATION_MS))
+    html = html.replace("__ALARM_ACTIONS__", "\n        ".join(action_lines))
     components.html(
-        f"""
-        <script>
-        (() => {{
-            const alarmToken = {token};
-            const src = "data:audio/mpeg;base64,{audio_data}";
-            const alarmDurationMs = {ALARM_DURATION_MS};
-            const play = (targetWindow) => {{
-                const stopPomodoroAlarm = (windowRef, expectedToken) => {{
-                    const stopTimer = windowRef.__pomodoroAlarmStopTimer;
-                    if (stopTimer) {{
-                        windowRef.clearTimeout(stopTimer);
-                        windowRef.__pomodoroAlarmStopTimer = null;
-                    }}
-                    const currentAudio = windowRef.__pomodoroAlarm;
-                    if (!currentAudio) {{
-                        return;
-                    }}
-                    if (expectedToken && windowRef.__pomodoroAlarmToken !== expectedToken) {{
-                        return;
-                    }}
-                    try {{
-                        currentAudio.pause();
-                        currentAudio.currentTime = 0;
-                    }} catch (error) {{
-                    }}
-                    if (windowRef.__pomodoroAlarm === currentAudio) {{
-                        windowRef.__pomodoroAlarm = null;
-                    }}
-                    windowRef.__pomodoroAlarmToken = null;
-                }};
-                const audio = new targetWindow.Audio(src);
-                audio.volume = 1;
-                stopPomodoroAlarm(targetWindow);
-                stopPomodoroAlarm(window);
-                targetWindow.__pomodoroAlarmToken = alarmToken;
-                targetWindow.__pomodoroAlarm = audio;
-                audio.addEventListener("ended", () => {{
-                    if (targetWindow.__pomodoroAlarm === audio) {{
-                        targetWindow.__pomodoroAlarm = null;
-                        targetWindow.__pomodoroAlarmToken = null;
-                    }}
-                }});
-                audio.loop = false;
-                audio.currentTime = 0;
-                audio.play().catch(() => {{}});
-                targetWindow.__pomodoroAlarmStopTimer = targetWindow.setTimeout(() => {{
-                    stopPomodoroAlarm(targetWindow, alarmToken);
-                }}, alarmDurationMs);
-            }};
-
-            try {{
-                play(window.parent || window);
-            }} catch (error) {{
-                play(window);
-            }}
-        }})();
-        </script>
-        """,
-        height=0,
+        html,
+        height=1,
     )
 
 
