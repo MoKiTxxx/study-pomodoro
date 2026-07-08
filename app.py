@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import base64
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -23,6 +24,7 @@ from config import ConfigError, load_config, validate_runtime_config
 from sheets_db import SheetsDB
 
 ALARM_PATH = Path(__file__).with_name("Alarm.mp3")
+SHORT_ALARM_DURATION_MS = 5000
 TIMER_REFRESH_MS = 500
 WRITE_AFTER_FINISH_REFRESH_MS = 600
 
@@ -601,6 +603,67 @@ def scalar_date(value, fallback: date) -> date:
     return parsed.date()
 
 
+def daily_hours_between_compat(df: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
+    if hasattr(analytics, "daily_hours_between"):
+        return analytics.daily_hours_between(df, start_date, end_date)
+
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
+    base = pd.DataFrame({"date": pd.date_range(start=start_date, end=end_date, freq="D").date})
+    counted = analytics.counted_sessions(df)
+    if counted.empty:
+        base["hours"] = 0.0
+        return base
+    window = counted[(counted["date"] >= start_date) & (counted["date"] <= end_date)]
+    if window.empty:
+        base["hours"] = 0.0
+        return base
+    grouped = analytics.daily_hours(window)
+    result = base.merge(grouped, on="date", how="left")
+    result["hours"] = result["hours"].fillna(0.0).round(2)
+    return result
+
+
+def daily_hours_bar_figure_compat(
+    daily_df: pd.DataFrame,
+    title: str,
+    x_label: str,
+    y_label: str,
+    empty_label: str,
+):
+    if hasattr(analytics, "daily_hours_bar_figure"):
+        return analytics.daily_hours_bar_figure(
+            daily_df,
+            title=title,
+            x_label=x_label,
+            y_label=y_label,
+            empty_label=empty_label,
+        )
+
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    if daily_df.empty:
+        ax.set_title(title)
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        ax.text(0.5, 0.5, empty_label, ha="center", va="center", transform=ax.transAxes)
+        ax.set_xticks([])
+        return fig
+
+    plot_df = daily_df.copy()
+    plot_df["date_label"] = pd.to_datetime(plot_df["date"]).dt.strftime("%m-%d")
+    bars = ax.bar(plot_df["date_label"], plot_df["hours"], color="#0ea5e9")
+    ax.bar_label(bars, fmt="%.2g", padding=3)
+    ax.set_title(title)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.grid(axis="y", alpha=0.25)
+    ax.tick_params(axis="x", rotation=45)
+    fig.tight_layout()
+    return fig
+
+
 def phase_class(phase: str) -> str:
     if phase == "focus":
         return "phase-focus"
@@ -770,7 +833,7 @@ def consume_alarm_events() -> list[dict[str, int | None]]:
 
     if hasattr(timer_state, "consume_pending_alarm_count"):
         legacy_count = timer_state.consume_pending_alarm_count()
-        return [{"duration_ms": None} for _ in range(legacy_count)]
+        return [{"duration_ms": SHORT_ALARM_DURATION_MS} for _ in range(legacy_count)]
 
     return []
 
@@ -787,7 +850,17 @@ def render_start_page(db: SheetsDB, timezone: str, language: str) -> None:
         drain_pending_writes(db, language)
 
     if timer_state.is_running() and st_autorefresh:
-        st_autorefresh(interval=TIMER_REFRESH_MS, key="timer_refresh")
+        refresh_paused_until = float(st.session_state.get("timer_refresh_paused_until", 0))
+        refresh_pause_ms = int(max(0, (refresh_paused_until - time.time()) * 1000))
+        if refresh_pause_ms > 0:
+            st_autorefresh(
+                interval=refresh_pause_ms + 100,
+                limit=1,
+                key=f"timer_refresh_after_alarm_{int(refresh_paused_until * 1000)}",
+            )
+        else:
+            st.session_state.pop("timer_refresh_paused_until", None)
+            st_autorefresh(interval=TIMER_REFRESH_MS, key="timer_refresh")
 
     if timer_state.should_show_timer_panel():
         render_timer_panel(timezone, language)
@@ -870,6 +943,11 @@ def render_alarm_player() -> None:
     if pending_alarms:
         latest_alarm = pending_alarms[-1]
         duration_ms = latest_alarm.get("duration_ms")
+        if duration_ms:
+            st.session_state["timer_refresh_paused_until"] = max(
+                float(st.session_state.get("timer_refresh_paused_until", 0)),
+                time.time() + (int(duration_ms) / 1000) + 0.35,
+            )
         action_lines.append(
             f"target.__playPomodoroAlarm && target.__playPomodoroAlarm({token}, {json.dumps(duration_ms)});"
         )
@@ -1414,9 +1492,9 @@ def render_stats_page(db: SheetsDB, timezone: str, language: str) -> None:
         if start_date > end_date:
             st.warning(text("date_range_swapped", language))
             start_date, end_date = end_date, start_date
-        range_daily_hours = analytics.daily_hours_between(summary["counted"], start_date, end_date)
+        range_daily_hours = daily_hours_between_compat(summary["counted"], start_date, end_date)
         st.pyplot(
-            analytics.daily_hours_bar_figure(
+            daily_hours_bar_figure_compat(
                 range_daily_hours,
                 title=text("range_chart_title", language),
                 x_label=text("chart_x", language),
